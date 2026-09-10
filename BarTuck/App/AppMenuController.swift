@@ -7,20 +7,29 @@ final class AppMenuController: NSObject {
     private let showTray: () -> Void
     private let hideApplication: () -> Void
     private let quitApplication: () -> Void
+    private let permissionSummary: () -> String
 
     init(dockVisibility: DockVisibilityController, showSettings: @escaping () -> Void,
          showTray: @escaping () -> Void, hideApplication: @escaping () -> Void,
-         quitApplication: @escaping () -> Void) {
+         quitApplication: @escaping () -> Void, permissionSummary: @escaping () -> String = { "" }) {
         self.dockVisibility = dockVisibility
         self.showSettings = showSettings
         self.showTray = showTray
         self.hideApplication = hideApplication
         self.quitApplication = quitApplication
+        self.permissionSummary = permissionSummary
     }
 
     func makeStatusMenu() -> NSMenu {
         let menu = NSMenu(title: "BarTuck")
         menu.autoenablesItems = false
+        let summary = permissionSummary()
+        if !summary.isEmpty {
+            let status = NSMenuItem(title: summary, action: nil, keyEquivalent: "")
+            status.isEnabled = false
+            menu.addItem(status)
+            menu.addItem(.separator())
+        }
         menu.addItem(item("打开托盘", action: #selector(openTray), symbol: "rectangle.stack"))
         menu.addItem(item("设置…", action: #selector(openSettings), key: ",", symbol: "gearshape"))
         menu.addItem(.separator())

@@ -5,6 +5,7 @@ import OSLog
 
 @MainActor
 final class MenuBarItemStore: ObservableObject {
+    let permissions = PermissionManager()
     @Published private(set) var items: [MenuBarItem] = []
     @Published var lastActivationError: String?
     @Published private(set) var activatingItemID: String?
@@ -180,7 +181,8 @@ final class MenuBarItemStore: ObservableObject {
             displays = DisplaySnapshotProvider.snapshots()
             return
         }
-        guard CGPreflightScreenCaptureAccess() else {
+        permissions.refresh()
+        guard permissions.screenRecordingGranted else {
             requiresScreenRecording = true
             captureGeneration += 1
             captureTask?.cancel()
@@ -433,7 +435,8 @@ final class MenuBarItemStore: ObservableObject {
             completion?()
             return
         }
-        guard CGPreflightScreenCaptureAccess() else { completion?(); return }
+        permissions.refresh()
+        guard permissions.screenRecordingGranted else { completion?(); return }
         // A panel open can arrive while the startup refresh is still
         // capturing. Do not launch a second ScreenCaptureKit enumeration;
         // overlapping captures were a major source of memory spikes and
@@ -481,8 +484,9 @@ final class MenuBarItemStore: ObservableObject {
             layoutOperationMessage = enabled ? "预览：菜单栏布局管理已开启。" : "预览：仅保留规则，不移动原图标。"
             return
         }
-        guard !enabled || (AXIsProcessTrusted() && CGPreflightScreenCaptureAccess()) else {
-            layoutOperationMessage = "请先授予辅助功能和屏幕录制权限。"
+        permissions.refresh()
+        guard !enabled || permissions.isReady else {
+            layoutOperationMessage = "权限未生效，请查看“权限与显示器”。"
             return
         }
         layoutManager.isEnabled = enabled
@@ -519,7 +523,8 @@ final class MenuBarItemStore: ObservableObject {
             return
         }
         guard layoutManagementEnabled, !selectedItems.isEmpty else { return }
-        guard AXIsProcessTrusted(), CGPreflightScreenCaptureAccess() else {
+        permissions.refresh()
+        guard permissions.isReady else {
             layoutOperationMessage = "权限未就绪，未执行菜单栏移动。"
             return
         }
@@ -696,7 +701,8 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     func activate(_ requestedItem: MenuBarItem, mouseButton: CGMouseButton = .left, retryCount: Int = 0) {
-        guard AXIsProcessTrusted() else {
+        permissions.refresh()
+        guard permissions.accessibilityGranted else {
             lastActivationError = "请先授予辅助功能权限。"
             return
         }

@@ -7,6 +7,7 @@ struct BarTuckApp: App {
     var body: some Scene {
         Settings {
             SettingsView(store: appDelegate.store, dockVisibility: appDelegate.dockVisibility,
+                         restartApplication: { appDelegate.restartApplication() },
                          showOnboarding: { appDelegate.showOnboarding() })
         }
         .commands {

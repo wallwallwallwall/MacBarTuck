@@ -60,7 +60,7 @@ private enum MenuBarRuntimeTests {
             PermissionManager(screenCaptureStatus: { granted }, screenCaptureRequest: {
                 requests += 1
                 return granted
-            }, openSettings: { _ in openedSettings += 1 })
+            }, openSettings: { _ in openedSettings += 1 }, history: nil)
         }
         let first = manager()
         first.refresh()

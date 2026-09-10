@@ -5,15 +5,19 @@ struct SettingsView: View {
     @ObservedObject var dockVisibility: DockVisibilityController
     let showOnboarding: () -> Void
 
-    @StateObject private var permissions = PermissionManager()
+    @ObservedObject private var permissions: PermissionManager
+    private let restartApplication: () -> Void
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
     @AppStorage("hoverRevealEnabled") private var hoverRevealEnabled = true
     @State private var previewHoverEnabled = true
     @State private var selectedTab: SettingsTab
 
-    init(store: MenuBarItemStore, dockVisibility: DockVisibilityController, showOnboarding: @escaping () -> Void = {}) {
+    init(store: MenuBarItemStore, dockVisibility: DockVisibilityController,
+         restartApplication: @escaping () -> Void = {}, showOnboarding: @escaping () -> Void = {}) {
         self.store = store
         self.dockVisibility = dockVisibility
+        self.permissions = store.permissions
+        self.restartApplication = restartApplication
         self.showOnboarding = showOnboarding
         _selectedTab = State(initialValue: SettingsTab.previewSelection)
     }
@@ -28,9 +32,19 @@ struct SettingsView: View {
                 .labelsHidden()
                 .frame(width: 340)
                 Spacer()
+                Button { selectedTab = .status } label: {
+                    Label(store.isUIPreviewMode ? "权限示例" : permissions.statusTitle,
+                          systemImage: permissions.isReady ? "checkmark.circle.fill" : "exclamationmark.circle")
+                        .foregroundStyle(permissions.isReady ? Color.green : Color.orange)
+                }
+                .buttonStyle(.plain).font(.system(size: 11))
+                .help(permissions.statusDetail)
                 Toggle("启用收纳", isOn: Binding(
                     get: { store.layoutManagementEnabled },
-                    set: { store.setLayoutManagementEnabled($0) }
+                    set: { value in
+                        store.setLayoutManagementEnabled(value)
+                        if value && !store.isUIPreviewMode && !permissions.isReady { selectedTab = .status }
+                    }
                 ))
                 .toggleStyle(.switch)
                 .controlSize(.small)
@@ -48,7 +62,14 @@ struct SettingsView: View {
         .preferredColorScheme(.dark)
         .onAppear { refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh() }
-        .alert("无法打开菜单项", isPresented: Binding(
+        .task {
+            while !Task.isCancelled {
+                permissions.refresh()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+        .onChange(of: permissions.effectiveAccessKey) { _, _ in store.refresh() }
+        .alert("BarTuck", isPresented: Binding(
             get: { store.lastActivationError != nil },
             set: { if !$0 { store.lastActivationError = nil } }
         )) {
@@ -71,7 +92,7 @@ struct SettingsView: View {
                 hoverRevealEnabled: store.isUIPreviewMode ? $previewHoverEnabled : $hoverRevealEnabled,
                 showOnboarding: showOnboarding)
         case .status:
-            StatusSettingsView(store: store, permissions: permissions)
+            StatusSettingsView(store: store, permissions: permissions, restartApplication: restartApplication)
         }
     }
 }

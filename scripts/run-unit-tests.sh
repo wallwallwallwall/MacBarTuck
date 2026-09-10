@@ -64,3 +64,9 @@ swiftc -parse-as-library "${SOURCES[@]}" \
     "$ROOT/Tests/AppAccessTests.swift" \
     -o "$BUILD_DIR/AppAccessTests"
 "$BUILD_DIR/AppAccessTests"
+
+swiftc -parse-as-library \
+    "$ROOT/BarTuck/Services/PermissionManager.swift" \
+    "$ROOT/Tests/PermissionStateTests.swift" \
+    -o "$BUILD_DIR/PermissionStateTests"
+"$BUILD_DIR/PermissionStateTests"

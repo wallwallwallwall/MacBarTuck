@@ -1,24 +1,50 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
+import Security
 
 @MainActor
 final class PermissionManager: ObservableObject {
     @Published private(set) var accessibilityGranted = false
     @Published private(set) var screenRecordingGranted = false
+    @Published private(set) var accessibilityWasPreviouslyEffective = false
+    @Published private(set) var screenWasPreviouslyEffective = false
+    @Published private(set) var screenRestartSuggested = false
+    @Published private(set) var lastChecked: Date?
     private static var didRequestScreenRecording = false
+    private static var didRequestAccessibility = false
+    private let accessibilityStatus: () -> Bool
+    private let accessibilityRequest: () -> Void
     private let screenCaptureStatus: () -> Bool
     private let screenCaptureRequest: () -> Bool
     private let openSettings: (String) -> Void
+    private let history: UserDefaults?
+    let isAdHocSigned = PermissionManager.hasAdHocSignature()
+
+    var effectiveCount: Int { (accessibilityGranted ? 1 : 0) + (screenRecordingGranted ? 1 : 0) }
+    var effectiveAccessKey: Int { (accessibilityGranted ? 1 : 0) + (screenRecordingGranted ? 2 : 0) }
+    var isReady: Bool { accessibilityGranted && screenRecordingGranted }
+    var statusTitle: String { isReady ? "权限已就绪" : "权限 \(effectiveCount)/2" }
+    var statusDetail: String {
+        "辅助功能：\(accessibilityGranted ? "已生效" : "未生效")；屏幕录制：\(screenRecordingGranted ? "已生效" : "未生效")"
+    }
 
     init(
+        accessibilityStatus: @escaping () -> Bool = AXIsProcessTrusted,
+        accessibilityRequest: @escaping () -> Void = {
+            _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+        },
         screenCaptureStatus: @escaping () -> Bool = CGPreflightScreenCaptureAccess,
         screenCaptureRequest: @escaping () -> Bool = CGRequestScreenCaptureAccess,
         openSettings: @escaping (String) -> Void = { value in
             guard let url = URL(string: value) else { return }
             NSWorkspace.shared.open(url)
-        }
+        },
+        history: UserDefaults? = ProcessInfo.processInfo.arguments.contains("--ui-preview") ? nil : .standard
     ) {
+        self.accessibilityStatus = accessibilityStatus
+        self.accessibilityRequest = accessibilityRequest
+        self.history = history
         self.screenCaptureStatus = screenCaptureStatus
         self.screenCaptureRequest = screenCaptureRequest
         self.openSettings = openSettings
@@ -26,12 +52,24 @@ final class PermissionManager: ObservableObject {
     }
 
     func refresh() {
-        accessibilityGranted = AXIsProcessTrusted()
+        accessibilityGranted = accessibilityStatus()
         screenRecordingGranted = screenCaptureStatus()
+        if accessibilityGranted { history?.set(true, forKey: "permissionAccessibilityWasEffective") }
+        if screenRecordingGranted {
+            history?.set(true, forKey: "permissionScreenWasEffective")
+            screenRestartSuggested = false
+        }
+        accessibilityWasPreviouslyEffective = history?.bool(forKey: "permissionAccessibilityWasEffective") ?? accessibilityGranted
+        screenWasPreviouslyEffective = history?.bool(forKey: "permissionScreenWasEffective") ?? screenRecordingGranted
+        lastChecked = Date()
     }
 
     func requestAccessibility() {
-        AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+        refresh()
+        guard !accessibilityGranted else { return }
+        if Self.didRequestAccessibility { openAccessibilitySettings(); return }
+        Self.didRequestAccessibility = true
+        accessibilityRequest()
         refresh()
     }
 
@@ -45,8 +83,9 @@ final class PermissionManager: ObservableObject {
             openScreenRecordingSettings()
         } else {
             Self.didRequestScreenRecording = true
-            _ = screenCaptureRequest()
+            let accepted = screenCaptureRequest()
             refresh()
+            screenRestartSuggested = accepted && !screenRecordingGranted
         }
     }
 
@@ -54,4 +93,16 @@ final class PermissionManager: ObservableObject {
     func openScreenRecordingSettings() { open("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") }
 
     private func open(_ url: String) { openSettings(url) }
+
+    private static func hasAdHocSignature() -> Bool {
+        var code: SecCode?
+        var staticCode: SecStaticCode?
+        var info: CFDictionary?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code,
+              SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
+              SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let dictionary = info as? [String: Any],
+              let flags = dictionary[kSecCodeInfoFlags as String] as? NSNumber else { return false }
+        return flags.uint32Value & SecCodeSignatureFlags.adhoc.rawValue != 0
+    }
 }

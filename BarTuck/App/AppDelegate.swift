@@ -7,7 +7,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = MenuBarItemStore()
     let dockVisibility = DockVisibilityController()
-    private let permissions = PermissionManager()
+    private var permissions: PermissionManager { store.permissions }
     private let preferences = PreferencesStore()
     private var statusBarController: StatusBarController?
     private var settingsWindowController: NSWindowController?
@@ -15,12 +15,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelPreviewWindowController: NSWindowController?
     private var isFinishingTermination = false
     private var didReplyToTermination = false
+    private var restartScheduled = false
     private lazy var menus = AppMenuController(
         dockVisibility: dockVisibility,
         showSettings: { [weak self] in self?.showSettings() },
         showTray: { [weak self] in self?.statusBarController?.showPanel() },
         hideApplication: { NSApp.hide(nil) },
-        quitApplication: { NSApp.terminate(nil) }
+        quitApplication: { NSApp.terminate(nil) },
+        permissionSummary: { [weak self] in
+            guard let self else { return "" }
+            self.permissions.refresh()
+            return self.permissions.statusDetail
+        }
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -78,7 +84,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.isMovableByWindowBackground = true
             window.appearance = NSAppearance(named: .darkAqua)
             window.contentMinSize = .init(width: 760, height: 560)
-            window.contentView = NSHostingView(rootView: SettingsView(store: store, dockVisibility: dockVisibility, showOnboarding: { [weak self] in
+            window.contentView = NSHostingView(rootView: SettingsView(store: store, dockVisibility: dockVisibility,
+                restartApplication: { [weak self] in self?.restartApplication() }, showOnboarding: { [weak self] in
                 self?.showOnboarding()
             }))
             window.center()
@@ -99,6 +106,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? { menus.makeDockMenu() }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func restartApplication() {
+        guard !store.isUIPreviewMode, !restartScheduled else { return }
+        let helper = Process()
+        helper.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // Wait for normal termination (including layout restoration). Pass
+        // the bundle path as an argument, never as shell source text.
+        helper.arguments = ["-c", "for attempt in 1 2 3 4 5 6 7 8 9 10; do if ! /bin/kill -0 \"$2\" 2>/dev/null; then exec /usr/bin/open -n \"$1\" --args --show-settings; fi; /bin/sleep 1; done; exit 1",
+                            "BarTuck-restart", Bundle.main.bundleURL.path, String(getpid())]
+        do {
+            try helper.run()
+            restartScheduled = true
+            NSApp.terminate(nil)
+        } catch {
+            store.lastActivationError = "无法重新启动 BarTuck：\(error.localizedDescription)"
+        }
+    }
 
     func showOnboarding() {
         if let onboardingWindowController {

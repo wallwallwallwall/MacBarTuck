@@ -12,6 +12,7 @@ APP_SOURCE="$DERIVED_DATA/Build/Products/Release/BarTuck.app"
 APP_STAGED="$STAGING/BarTuck.app"
 DMG_NAME="BarTuck-$VERSION.dmg"
 DMG_PATH="$DIST/$DMG_NAME"
+SIGNING_IDENTITY="${BARTUCK_SIGNING_IDENTITY:--}"
 
 trap 'rm -rf "$TEMP_ROOT"' EXIT INT TERM
 
@@ -43,7 +44,11 @@ if [[ "$ARCHS_FOUND" != "arm64" ]]; then
   exit 1
 fi
 
-codesign --force --deep --sign - --timestamp=none "$APP_STAGED"
+if [[ "$SIGNING_IDENTITY" == "-" ]]; then
+  codesign --force --deep --sign - --timestamp=none "$APP_STAGED"
+else
+  codesign --force --deep --sign "$SIGNING_IDENTITY" --options runtime --timestamp "$APP_STAGED"
+fi
 codesign --verify --deep --strict --verbose=2 "$APP_STAGED"
 
 ln -s /Applications "$STAGING/Applications"
@@ -56,6 +61,7 @@ ditto --norsrc "$ROOT/docs/runtime-qa.md" "$STAGING/docs/runtime-qa.md"
 ditto --norsrc "$ROOT/docs/open-source-references.md" "$STAGING/docs/open-source-references.md"
 ditto --norsrc "$ROOT/docs/interface-refresh.md" "$STAGING/docs/interface-refresh.md"
 ditto --norsrc "$ROOT/docs/app-access.md" "$STAGING/docs/app-access.md"
+ditto --norsrc "$ROOT/docs/permissions.md" "$STAGING/docs/permissions.md"
 ditto --norsrc "$ROOT/design-qa.md" "$STAGING/design-qa.md"
 mkdir -p "$STAGING/docs/screenshots"
 for screenshot in "$ROOT"/docs/screenshots/*.png; do
