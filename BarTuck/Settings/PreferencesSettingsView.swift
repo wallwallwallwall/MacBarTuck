@@ -141,7 +141,7 @@ struct PreferencesSettingsView: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(BarTuckTheme.accentStrong)
             VStack(alignment: .leading, spacing: 2) {
-                Text("BarTuck 0.1.0")
+                Text("BarTuck 0.1.1")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(BarTuckTheme.primaryText)
                 Text("Apple Silicon · macOS 15+ · 本地运行 · 无遥测")

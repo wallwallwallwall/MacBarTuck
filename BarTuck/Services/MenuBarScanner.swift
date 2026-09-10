@@ -6,6 +6,19 @@ import ApplicationServices
 final class MenuBarScanner {
     private let excludedTitles = Set(["BarTuckControlItem", "BarTuckHiddenSection"])
     private var ownedStatusWindowIDs: Set<CGWindowID> = []
+    private let readWindows: () -> [[String: Any]]
+    private let readDisplayBounds: () -> [CGRect]
+    private let ownBundleIdentifier: String?
+
+    init(
+        readWindows: @escaping () -> [[String: Any]] = MenuBarWindowServer.windowInfo,
+        readDisplayBounds: @escaping () -> [CGRect] = MenuBarScanner.activeDisplayBounds,
+        ownBundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) {
+        self.readWindows = readWindows
+        self.readDisplayBounds = readDisplayBounds
+        self.ownBundleIdentifier = ownBundleIdentifier
+    }
 
     func setOwnedStatusWindowIDs(_ windowIDs: Set<CGWindowID>) {
         ownedStatusWindowIDs = windowIDs
@@ -101,7 +114,7 @@ final class MenuBarScanner {
     private func scanWindowBackedItems(selectedIDs: Set<String>) -> [MenuBarItem] {
         // Hidden-section items are deliberately moved offscreen. They must
         // remain in the settings and overflow panel when either is refreshed.
-        let windows = MenuBarWindowServer.windowInfo()
+        let windows = readWindows()
         let candidates: [(identifier: Int, ownerPID: Int, title: String, owner: String, ownerKey: String, appIcon: NSImage?, frame: CGRect)] = windows.compactMap { window in
             guard MenuBarWindowServer.isStatusItemLayer(window),
                   let bounds = MenuBarWindowServer.bounds(in: window),
@@ -109,7 +122,7 @@ final class MenuBarScanner {
                   let ownerPID = MenuBarWindowServer.integer(kCGWindowOwnerPID as String, in: window) else { return nil }
             guard ownerPID != Int(getpid()), !ownedStatusWindowIDs.contains(CGWindowID(identifier)) else { return nil }
             let title = (window[kCGWindowName as String] as? String) ?? "Menu Bar Item"
-            guard !excludedTitles.contains(title) else { return nil }
+            guard !excludedTitles.contains(title), title != ownBundleIdentifier else { return nil }
             let owner = (window[kCGWindowOwnerName as String] as? String) ?? "System Menu Bar"
             let runningApp = NSRunningApplication(processIdentifier: pid_t(ownerPID))
             // macOS can report the same Control Center status item with either
@@ -151,7 +164,7 @@ final class MenuBarScanner {
     /// removal, and process restarts without treating our own layout moves as
     /// new items.
     func windowSignature() -> Set<String> {
-        let windows = MenuBarWindowServer.windowInfo()
+        let windows = readWindows()
         return Set(windows.compactMap { window in
             guard MenuBarWindowServer.isStatusItemLayer(window),
                   let identifier = MenuBarWindowServer.integer(kCGWindowNumber as String, in: window),
@@ -160,7 +173,7 @@ final class MenuBarScanner {
                   !ownedStatusWindowIDs.contains(CGWindowID(identifier)),
                   let bounds = MenuBarWindowServer.bounds(in: window) else { return nil }
             let title = (window[kCGWindowName as String] as? String) ?? ""
-            guard !excludedTitles.contains(title) else { return nil }
+            guard !excludedTitles.contains(title), title != ownBundleIdentifier else { return nil }
             let width = Int(bounds.width.rounded())
             let height = Int(bounds.height.rounded())
             guard width > 4, height > 4, height <= 40 else { return nil }
@@ -222,6 +235,10 @@ final class MenuBarScanner {
     }
 
     private func displayBounds() -> [CGRect] {
+        readDisplayBounds()
+    }
+
+    static func activeDisplayBounds() -> [CGRect] {
         var count: UInt32 = 0
         guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
         var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))

@@ -16,7 +16,7 @@ DMG_PATH="$DIST/$DMG_NAME"
 trap 'rm -rf "$TEMP_ROOT"' EXIT INT TERM
 
 rm -rf "$DERIVED_DATA"
-mkdir -p "$STAGING/.background" "$DIST"
+mkdir -p "$STAGING/.background" "$STAGING/docs" "$DIST"
 rm -f "$DMG_PATH" "$DMG_PATH.sha256"
 
 xcodebuild \
@@ -52,6 +52,8 @@ ditto --norsrc "$ROOT/README.md" "$STAGING/README.md"
 ditto --norsrc "$ROOT/PRIVACY.md" "$STAGING/PRIVACY.md"
 ditto --norsrc "$ROOT/LICENSE" "$STAGING/LICENSE"
 ditto --norsrc "$ROOT/NOTICE" "$STAGING/NOTICE"
+ditto --norsrc "$ROOT/docs/runtime-qa.md" "$STAGING/docs/runtime-qa.md"
+ditto --norsrc "$ROOT/docs/open-source-references.md" "$STAGING/docs/open-source-references.md"
 
 swift "$ROOT/scripts/make-dmg-background.swift" "$STAGING/.background/background.png"
 xattr -cr "$STAGING"

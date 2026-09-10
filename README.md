@@ -32,7 +32,7 @@ BarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Appl
 
 ## 安装
 
-1. 打开 `BarTuck-0.1.0.dmg`。
+1. 打开 `BarTuck-0.1.1.dmg`。
 2. 将 `BarTuck.app` 拖入 `Applications`。
 3. 首次打开时按引导授予辅助功能和屏幕录制权限。
 4. 若 macOS 提示应用来自未识别开发者，请在 Finder 中右键应用并选择“打开”。当前开源构建使用临时签名，尚未经过 Apple 公证。
@@ -70,7 +70,7 @@ xcodebuild \
 ./scripts/run-unit-tests.sh
 ```
 
-当前测试集覆盖 36 个规则、持久化、多屏坐标和安全预览状态边界。
+当前测试集包含 36 项规则测试和 17 项扫描、分隔项与授权回归检查。系统授权接口使用替身验证调用策略，不修改本机权限；这些测试不能代替真实收纳和点击验收。
 
 构建 Debug 应用后运行 8 个安全界面冒烟场景：
 
@@ -84,7 +84,7 @@ xcodebuild \
 ./scripts/create-dmg.sh
 ```
 
-产物位于 `dist/BarTuck-0.1.0.dmg`，并附带 SHA-256 文件。
+产物位于 `dist/BarTuck-0.1.1.dmg`，并附带 SHA-256 文件。
 
 ## 隐私与安全
 
@@ -98,9 +98,13 @@ xcodebuild \
 - macOS 更新可能改变菜单栏窗口结构，需要后续适配。
 - 个别应用会动态重建菜单栏项目，BarTuck 会周期性重新发现，但短时间内可能显示备用图标。
 - 与其他菜单栏整理工具同时运行会产生布局冲突。
+- 0.1.0 的已授权双屏实测发现分隔项越界和本应用镜像误识别；0.1.1 已修正相关代码并增加回归测试，但真实收纳、点击与双屏托盘仍需在修复版上复测。详见 [测试记录](docs/runtime-qa.md)。
+- 临时签名的应用在更新代码后可能需要重新授予系统权限。macOS 15、27 和显示器热插拔尚未完成实机验收。
 
 ## 开源来源
 
 BarTuck 基于 MIT 许可的 [OverflowBar](https://github.com/EvanProgramming/OverflowBar) 开发，固定来源提交为 `a5f1588f8353123d2906aa18810a74e0816d1603`。原版权和许可证保留在 [LICENSE](LICENSE) 与 [NOTICE](NOTICE) 中。
 
 欢迎通过 [CONTRIBUTING.md](CONTRIBUTING.md) 中的流程参与开发。
+
+额外的功能参考、许可证边界及扩展优先级见 [开源参考](docs/open-source-references.md)。

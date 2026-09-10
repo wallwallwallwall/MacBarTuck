@@ -110,7 +110,7 @@ final class MenuBarLayoutManager {
         move(item, relativeTo: target.id, placement: .right, restoreCursorLocation: restoreCursorLocation, completion: completion)
     }
 
-    func rehide(_ item: MenuBarItem, restoreCursorLocation: CGPoint? = nil, completion: @escaping (Bool) -> Void = { _ in }) {
+    func rehide(_ item: MenuBarItem, restoreCursorLocation: CGPoint? = nil, targetAttempt: Int = 0, completion: @escaping (Bool) -> Void = { _ in }) {
         if #available(macOS 27.0, *) {
             guard isEnabled, let element = item.axElement else { completion(false); return }
             completion(setAXPosition(hiddenAXPosition(for: item), for: element))
@@ -121,6 +121,16 @@ final class MenuBarLayoutManager {
             return
         }
         guard isEnabled, let target = hiddenTargetWindow() else { completion(false); return }
+        // Wait for the compact separator to reach WindowServer. The UI
+        // length changes asynchronously after a menu is dismissed.
+        guard target.frame.width <= 100 else {
+            guard targetAttempt < 20 else { completion(false); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.rehide(item, restoreCursorLocation: restoreCursorLocation,
+                             targetAttempt: targetAttempt + 1, completion: completion)
+            }
+            return
+        }
         move(item, relativeTo: target.id, placement: .left, restoreCursorLocation: restoreCursorLocation, completion: completion)
     }
 

@@ -30,3 +30,16 @@ swiftc \
     -o "$BUILD_DIR/OverflowPolicyTests"
 
 "$BUILD_DIR/OverflowPolicyTests"
+
+swiftc \
+    -parse-as-library \
+    "${SOURCES[@]}" \
+    "$ROOT/BarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/BarTuck/Services/MenuBarWindowServer.swift" \
+    "$ROOT/BarTuck/Services/MenuBarScanner.swift" \
+    "$ROOT/BarTuck/Core/StatusItemLayoutPolicy.swift" \
+    "$ROOT/BarTuck/Services/PermissionManager.swift" \
+    "$ROOT/Tests/MenuBarRuntimeTests.swift" \
+    -o "$BUILD_DIR/MenuBarRuntimeTests"
+
+"$BUILD_DIR/MenuBarRuntimeTests"

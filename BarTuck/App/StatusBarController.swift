@@ -14,6 +14,8 @@ final class StatusBarController: NSObject {
     private var hoverRevealSuppressedUntilPointerLeaves = false
     private var hiddenSectionReflowWorkItem: DispatchWorkItem?
     private var requestedHiddenSectionLength: CGFloat?
+    private var isApplyingLayout = false
+    private var isTerminating = false
 
     init(store: MenuBarItemStore, showSettings: @escaping () -> Void) {
         let defaults = UserDefaults.standard
@@ -30,7 +32,7 @@ final class StatusBarController: NSObject {
         let visibleLength = max(NSStatusBar.system.thickness, 18)
         let hiddenLength: CGFloat = {
             if #available(macOS 27.0, *) { return 0 }
-            return 2_000
+            return 20
         }()
         statusItem = NSStatusBar.system.statusItem(withLength: visibleLength)
         statusItem.autosaveName = arrowName
@@ -50,6 +52,10 @@ final class StatusBarController: NSObject {
             // an explicit user action (or when onboarding is completed).
         }
         store.onLayoutStateChanged = { [weak self] in self?.updateHiddenSectionLength() }
+        store.onLayoutOperationStateChanged = { [weak self] applying in
+            self?.isApplyingLayout = applying
+            self?.updateHiddenSectionLength()
+        }
         let button = statusItem.button
         statusItem.length = visibleLength
         statusItem.isVisible = true
@@ -141,6 +147,7 @@ final class StatusBarController: NSObject {
     }
 
     func prepareForTermination() {
+        isTerminating = true
         hiddenSectionReflowWorkItem?.cancel()
         hiddenSectionReflowWorkItem = nil
         requestedHiddenSectionLength = 0
@@ -175,11 +182,11 @@ final class StatusBarController: NSObject {
     private func statusWindowID(for item: NSStatusItem) -> CGWindowID? {
         let hidden = item === hiddenSectionItem
         let exactTitle = hidden ? "BarTuckHiddenSection" : "BarTuckControlItem"
-        let expectedTitle = hidden ? "Item-1" : "Item-0"
         let windows = MenuBarWindowServer.windowInfo()
         if let exact = windows.compactMap({ info -> (id: CGWindowID, width: CGFloat)? in
             guard MenuBarWindowServer.isStatusItemLayer(info),
-                  (info[kCGWindowOwnerName as String] as? String) == "Control Center",
+                  let ownerPID = MenuBarWindowServer.integer(kCGWindowOwnerPID as String, in: info),
+                  ownerPID == Int(getpid()) || NSRunningApplication(processIdentifier: pid_t(ownerPID))?.bundleIdentifier == "com.apple.controlcenter",
                   (info[kCGWindowName as String] as? String) == exactTitle,
                   let rawID = MenuBarWindowServer.integer(kCGWindowNumber as String, in: info),
                   rawID > 0,
@@ -189,25 +196,13 @@ final class StatusBarController: NSObject {
         }).max(by: { $0.id < $1.id }) {
             return exact.id
         }
-        let candidates = windows.compactMap { info -> (id: CGWindowID, width: CGFloat)? in
-            guard MenuBarWindowServer.isStatusItemLayer(info),
-                  (info[kCGWindowOwnerName as String] as? String) == "Control Center",
-                  (info[kCGWindowName as String] as? String) == expectedTitle,
-                  let rawID = MenuBarWindowServer.integer(kCGWindowNumber as String, in: info),
-                  rawID > 0,
-                  rawID <= Int(CGWindowID.max),
-                  let bounds = MenuBarWindowServer.bounds(in: info) else { return nil }
-            return (CGWindowID(rawID), bounds.width)
-        }
-        guard !candidates.isEmpty else { return nil }
-        if hidden {
-            return candidates.filter { $0.width > 1_000 }.max { $0.id < $1.id }?.id
-                ?? candidates.max { $0.id < $1.id }?.id
-        }
-        return candidates.filter { $0.width >= 25 && $0.width <= 100 }.max { $0.id < $1.id }?.id
+        // Generic Item-0/Item-1 windows can belong to unrelated apps.
+        // Wait for our exact title instead of guessing by age or width.
+        return nil
     }
 
     private func updateHiddenSectionLength() {
+        guard !isTerminating else { return }
         if #available(macOS 27.0, *) {
             // macOS 27 owns the overflow slot and renders the menu bar as a
             // composite host. Keeping a staging item would compete with it.
@@ -216,17 +211,13 @@ final class StatusBarController: NSObject {
             requestedHiddenSectionLength = 0
             return
         }
-        if #available(macOS 26.0, *) {
-            // Control Center fixes a hosted status item's width when it is
-            // registered. Resizing it to zero or a square staging slot leaves
-            // a permanent 38pt host on macOS 26, so keep the launch-time
-            // 2,000pt hidden lane stable.
-            return
-        }
-        let desiredLength: CGFloat = store.isReadyForManagedLayout &&
-            store.layoutManagementEnabled && !store.selectedItems.isEmpty
-            ? 2_000
-            : 0
+        let desiredLength = StatusItemLayoutPolicy.separatorLength(
+            enabled: store.layoutManagementEnabled,
+            ready: store.isReadyForManagedLayout,
+            hasSelection: !store.selectedItems.isEmpty,
+            isApplying: isApplyingLayout,
+            screenWidths: NSScreen.screens.map { $0.frame.width }
+        )
         guard statusHostsReady else { return }
         let item = hiddenSectionItem
         guard requestedHiddenSectionLength != desiredLength else { return }
@@ -240,25 +231,16 @@ final class StatusBarController: NSObject {
             return
         }
 
-        // A hosted status item that has already been expanded is often left
-        // off-screen by Control Center when it is merely resized smaller.
-        // Hide it completely, let Control Center discard that placement, then
-        // show a compact staging slot before sending any Command-drag.
-        item.isVisible = false
-        item.length = 0
+        // Keep the separator identity while arranging, then expand it only
+        // after the move. Dropping before an expanded host is offscreen.
+        item.length = desiredLength
+        item.isVisible = true
         let work = DispatchWorkItem { [weak self] in
-            guard let self,
-                  self.requestedHiddenSectionLength == desiredLength else { return }
-            item.isVisible = true
-            item.length = desiredLength
-            self.hiddenSectionReflowWorkItem = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                guard self?.requestedHiddenSectionLength == desiredLength else { return }
-                self?.publishStatusItemWindowIDs()
-            }
+            self?.hiddenSectionReflowWorkItem = nil
+            self?.publishStatusItemWindowIDs()
         }
         hiddenSectionReflowWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
     }
 
     private var hoverRevealEnabled: Bool {
