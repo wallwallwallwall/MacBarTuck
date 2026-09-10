@@ -32,6 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Logger(subsystem: "com.bartuck.app", category: "startup").info("Accessibility trusted: \(AXIsProcessTrusted(), privacy: .public)")
         let arguments = ProcessInfo.processInfo.arguments
+        if !store.isUIPreviewMode {
+            DiagnosticLog.shared.record("application.start", ["build": Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0") ?? 0,
+                "permissions": permissions.effectiveAccessKey])
+        }
         if arguments.contains("--ui-preview") {
             NSApp.setActivationPolicy(.regular)
             store.prepareForUIPreview()
@@ -57,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // items uses synthetic Command-drag events and can change WindowServer
         // pointer state before the user has interacted with BarTuck.
         if preferences.hasCompletedOnboarding {
-            store.refresh()
+            store.refresh(source: .startup)
         } else {
             DispatchQueue.main.async { [weak self] in self?.showOnboarding() }
         }

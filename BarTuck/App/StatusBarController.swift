@@ -228,14 +228,15 @@ final class StatusBarController: NSObject {
         }
         let desiredLength = StatusItemLayoutPolicy.separatorLength(
             enabled: store.layoutManagementEnabled,
-            ready: store.isReadyForManagedLayout,
-            hasSelection: !store.selectedItems.isEmpty,
+            ready: store.isHiddenSectionActive,
+            hasSelection: store.isHiddenSectionActive,
             isApplying: isApplyingLayout,
             screenWidths: NSScreen.screens.map { $0.frame.width }
         )
         guard statusHostsReady else { return }
         let item = hiddenSectionItem
         guard requestedHiddenSectionLength != desiredLength else { return }
+        DiagnosticLog.shared.record("separator.resize", ["width": Int(desiredLength), "arranging": isApplyingLayout ? 1 : 0])
         requestedHiddenSectionLength = desiredLength
         hiddenSectionReflowWorkItem?.cancel()
 

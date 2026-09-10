@@ -13,6 +13,8 @@ final class MenuBarLayoutManager {
     private let initialWindowIDs: Set<CGWindowID>
     private var controlStatusItemWindowID: CGWindowID?
     private var hiddenStatusItemWindowID: CGWindowID?
+    private var operationGeneration = 0
+    func cancelPendingOperations() { operationGeneration += 1 }
     var onHiddenFramesChanged: (([CGRect]) -> Void)?
     init(preferences: PreferencesStore) {
         self.preferences = preferences
@@ -60,16 +62,15 @@ final class MenuBarLayoutManager {
     }
 
     private func hideWindowBacked(_ items: [MenuBarItem], relativeTo controlFrame: CGRect, targetAttempt: Int, completion: @escaping (Int) -> Void) {
-        let managedWindowIDs = Set(items.compactMap(\.windowID))
         let managedSystemNames = protectedNames(for: items)
-        restoreProtectedSystemItems(excluding: managedWindowIDs, excludingSystemNames: managedSystemNames) { [weak self] _ in
-            self?.hideAfterRestoringProtectedItems(items, relativeTo: controlFrame, targetAttempt: targetAttempt, managedSystemNames: managedSystemNames, completion: completion)
-        }
+        hideAfterRestoringProtectedItems(items, relativeTo: controlFrame, targetAttempt: targetAttempt, managedSystemNames: managedSystemNames, completion: completion)
     }
 
-    private func hideAfterRestoringProtectedItems(_ items: [MenuBarItem], relativeTo controlFrame: CGRect, targetAttempt: Int, managedSystemNames: Set<String>, completion: @escaping (Int) -> Void) {
+    private func hideAfterRestoringProtectedItems(_ items: [MenuBarItem], relativeTo controlFrame: CGRect, targetAttempt: Int, managedSystemNames: Set<String>, generation: Int? = nil, completion: @escaping (Int) -> Void) {
+        let token = generation ?? operationGeneration
+        guard token == operationGeneration else { completion(0); return }
         guard isEnabled else { completion(0); return }
-        guard let target = hiddenTargetWindow(), Self.isVisibleMenuBarFrame(target.frame) else {
+        guard let target = hiddenTargetWindow(), target.frame.width <= 100, Self.isVisibleMenuBarFrame(target.frame) else {
             guard targetAttempt < 20 else {
                 logger.error("Visible hidden-section staging target did not appear after bounded retries")
                 completion(0)
@@ -77,7 +78,7 @@ final class MenuBarLayoutManager {
             }
             logger.info("Hidden staging target pending; retrying attempt \(targetAttempt + 1, privacy: .public)")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.hideAfterRestoringProtectedItems(items, relativeTo: controlFrame, targetAttempt: targetAttempt + 1, managedSystemNames: managedSystemNames, completion: completion)
+                self?.hideAfterRestoringProtectedItems(items, relativeTo: controlFrame, targetAttempt: targetAttempt + 1, managedSystemNames: managedSystemNames, generation: token, completion: completion)
             }
             return
         }
@@ -87,10 +88,9 @@ final class MenuBarLayoutManager {
         }.filter { !$0.isAlwaysVisibleSystemItem }
          .filter(needsHiding)
         publishCurrentFrames(for: managed)
-        hideSequentially(managed, index: 0, movedCount: 0) { [weak self] movedCount in
+        hideSequentially(managed, index: 0, movedCount: 0, generation: token) { [weak self] movedCount in
             self?.publishCurrentFrames(for: managed)
-            let managedWindowIDs = Set(managed.compactMap(\.windowID))
-            self?.restoreProtectedSystemItems(excluding: managedWindowIDs, excludingSystemNames: managedSystemNames) { _ in completion(movedCount) }
+            completion(movedCount)
         }
     }
 
@@ -110,7 +110,9 @@ final class MenuBarLayoutManager {
         move(item, relativeTo: target.id, placement: .right, restoreCursorLocation: restoreCursorLocation, completion: completion)
     }
 
-    func rehide(_ item: MenuBarItem, restoreCursorLocation: CGPoint? = nil, targetAttempt: Int = 0, completion: @escaping (Bool) -> Void = { _ in }) {
+    func rehide(_ item: MenuBarItem, restoreCursorLocation: CGPoint? = nil, targetAttempt: Int = 0, generation: Int? = nil, completion: @escaping (Bool) -> Void = { _ in }) {
+        let token = generation ?? operationGeneration
+        guard token == operationGeneration else { completion(false); return }
         if #available(macOS 27.0, *) {
             guard isEnabled, let element = item.axElement else { completion(false); return }
             completion(setAXPosition(hiddenAXPosition(for: item), for: element))
@@ -127,7 +129,7 @@ final class MenuBarLayoutManager {
             guard targetAttempt < 20 else { completion(false); return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 self?.rehide(item, restoreCursorLocation: restoreCursorLocation,
-                             targetAttempt: targetAttempt + 1, completion: completion)
+                             targetAttempt: targetAttempt + 1, generation: token, completion: completion)
             }
             return
         }
@@ -202,7 +204,7 @@ final class MenuBarLayoutManager {
             return
         }
         guard let target = controlTargetWindow() else { return }
-        move(item, relativeTo: target.id, placement: .left) { _ in }
+        move(item, relativeTo: target.id, placement: .right) { _ in }
     }
 
     func restoreProtectedSystemItems(attempt: Int = 0, excluding excludedWindowIDs: Set<CGWindowID> = [], excludingSystemNames: Set<String> = [], completion: @escaping (Int) -> Void = { _ in }) {
@@ -290,7 +292,9 @@ final class MenuBarLayoutManager {
         return CGRect(origin: point, size: size)
     }
 
-    private func hideSequentially(_ items: [MenuBarItem], index: Int, movedCount: Int, completion: @escaping (Int) -> Void) {
+    private func hideSequentially(_ items: [MenuBarItem], index: Int, movedCount: Int, generation: Int? = nil, completion: @escaping (Int) -> Void) {
+        let token = generation ?? operationGeneration
+        guard token == operationGeneration else { completion(movedCount); return }
         guard index < items.count else { completion(movedCount); return }
         guard let target = hiddenTargetWindow(), Self.isVisibleMenuBarFrame(target.frame) else {
             completion(movedCount)
@@ -299,7 +303,10 @@ final class MenuBarLayoutManager {
         let item = items[index]
         move(item, relativeTo: target.id, placement: .left) { [weak self] moved in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-                self?.hideSequentially(items, index: index + 1, movedCount: movedCount + (moved ? 1 : 0), completion: completion)
+                // One failed placement ends the transaction. Continuing to
+                // drag other hosts after a timeout makes both bars jump.
+                guard moved else { completion(movedCount); return }
+                self?.hideSequentially(items, index: index + 1, movedCount: movedCount + 1, generation: token, completion: completion)
             }
         }
     }
@@ -311,21 +318,25 @@ final class MenuBarLayoutManager {
         onHiddenFramesChanged?(frames)
     }
 
-    private func restoreSequentially(_ items: [MenuBarItem], index: Int, target: (id: CGWindowID, frame: CGRect), movedCount: Int, completion: @escaping (Int) -> Void) {
+    private func restoreSequentially(_ items: [MenuBarItem], index: Int, target: (id: CGWindowID, frame: CGRect), movedCount: Int, generation: Int? = nil, completion: @escaping (Int) -> Void) {
+        let token = generation ?? operationGeneration
+        guard token == operationGeneration else { completion(movedCount); return }
         guard index < items.count else { completion(movedCount); return }
         let item = items[index]
-        move(item, relativeTo: target.id, placement: .left) { [weak self] moved in
+        move(item, relativeTo: target.id, placement: .right) { [weak self] moved in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
                 guard let self, let refreshed = self.controlTargetWindow() else {
                     completion(movedCount + (moved ? 1 : 0))
                     return
                 }
-                self.restoreSequentially(items, index: index + 1, target: refreshed, movedCount: movedCount + (moved ? 1 : 0), completion: completion)
+                self.restoreSequentially(items, index: index + 1, target: refreshed, movedCount: movedCount + (moved ? 1 : 0), generation: token, completion: completion)
             }
         }
     }
 
-    private func restoreProtectedSequentially(_ records: [(id: CGWindowID, pid: pid_t, title: String, owner: String, frame: CGRect)], index: Int, target: (id: CGWindowID, frame: CGRect), movedCount: Int, completion: @escaping (Int) -> Void) {
+    private func restoreProtectedSequentially(_ records: [(id: CGWindowID, pid: pid_t, title: String, owner: String, frame: CGRect)], index: Int, target: (id: CGWindowID, frame: CGRect), movedCount: Int, generation: Int? = nil, completion: @escaping (Int) -> Void) {
+        let token = generation ?? operationGeneration
+        guard token == operationGeneration else { completion(movedCount); return }
         guard index < records.count else { completion(movedCount); return }
         let record = records[index]
         let item = MenuBarItem(
@@ -346,19 +357,30 @@ final class MenuBarLayoutManager {
                     completion(movedCount + (moved ? 1 : 0))
                     return
                 }
-                self.restoreProtectedSequentially(records, index: index + 1, target: refreshed, movedCount: movedCount + (moved ? 1 : 0), completion: completion)
+                self.restoreProtectedSequentially(records, index: index + 1, target: refreshed, movedCount: movedCount + (moved ? 1 : 0), generation: token, completion: completion)
             }
         }
     }
 
-    private func move(_ item: MenuBarItem, relativeTo targetWindowID: CGWindowID, placement: Placement, attempt: Int = 1, restoreCursorLocation: CGPoint? = nil, completion: @escaping (Bool) -> Void) {
+    private func move(_ requestedItem: MenuBarItem, relativeTo targetWindowID: CGWindowID, placement: Placement, attempt: Int = 1, restoreCursorLocation: CGPoint? = nil, completion: @escaping (Bool) -> Void) {
+        let generation = operationGeneration
+        guard let targetFrame = currentFrame(windowID: targetWindowID),
+              let targetDisplay = Self.activeDisplayBounds().first(where: { $0.contains(CGPoint(x: targetFrame.midX, y: targetFrame.midY)) }) else {
+            DiagnosticLog.shared.record("move.rejected.target", ["target": Int(targetWindowID)])
+            completion(false); return
+        }
+        if let originalDisplay = requestedItem.sourceDisplayBounds, originalDisplay != targetDisplay,
+           requestedItem.representation(on: targetDisplay) == nil {
+            DiagnosticLog.shared.record("move.rejected.display", ["window": Int(requestedItem.windowID ?? 0)])
+            completion(false); return
+        }
+        let item = requestedItem.activationTarget(on: targetDisplay)
         // Capture before injecting the synthetic drag. At this point the
         // WindowServer location still matches the real hardware pointer,
         // including when the user clicked inside BarTuck itself.
         let physicalPointerLocation = restoreCursorLocation ?? CGEvent(source: nil)?.location
         guard let itemWindowID = item.windowID, let ownerPID = item.ownerPID,
               let itemFrame = currentFrame(windowID: itemWindowID),
-              let targetFrame = currentFrame(windowID: targetWindowID),
               let source = eventSource(for: ownerPID) else {
             completion(false)
             return
@@ -370,8 +392,10 @@ final class MenuBarLayoutManager {
         // hardware pointer. On reveal the hidden source is invalid, so the
         // target's visible frame becomes the safe fallback for both events.
         let itemPoint = CGPoint(x: itemFrame.midX, y: itemFrame.midY)
-        let startPoint = safeEventPoint(preferred: itemPoint, fallback: targetFrame)
-        guard let destinationPoint = destinationPoint(for: placement, itemFrame: itemFrame, targetFrame: targetFrame) else {
+        let startPoint = targetDisplay.contains(itemPoint) ? itemPoint : CGPoint(x: targetFrame.midX, y: targetFrame.midY)
+        guard let destinationPoint = destinationPoint(for: placement, itemFrame: itemFrame, targetFrame: targetFrame),
+              targetDisplay.contains(destinationPoint) else {
+            DiagnosticLog.shared.record("move.rejected.edge", ["window": Int(itemWindowID), "target": Int(targetWindowID)])
             logger.error("Refusing menu-bar move because the destination edge is off the active display")
             completion(false)
             return
@@ -382,6 +406,7 @@ final class MenuBarLayoutManager {
             completion(false)
             return
         }
+        DiagnosticLog.shared.record("move.begin", ["window": Int(itemWindowID), "target": Int(targetWindowID), "generation": generation])
         postDrag(
             down: down,
             dragged: dragged,
@@ -389,15 +414,15 @@ final class MenuBarLayoutManager {
             ownerPID: ownerPID,
             restoreCursorLocation: physicalPointerLocation
         ) { [weak self] success in
-            guard let self, success else { completion(false); return }
-            self.verifyMove(item, relativeTo: targetWindowID, placement: placement, attempt: attempt, check: 0, restoreCursorLocation: physicalPointerLocation, completion: completion)
+            guard let self, success, self.operationGeneration == generation else { completion(false); return }
+            self.verifyMove(item, relativeTo: targetWindowID, placement: placement, attempt: attempt, check: 0, generation: generation, restoreCursorLocation: physicalPointerLocation, completion: completion)
         }
     }
 
-    private func verifyMove(_ item: MenuBarItem, relativeTo targetWindowID: CGWindowID, placement: Placement, attempt: Int, check: Int, restoreCursorLocation: CGPoint?, completion: @escaping (Bool) -> Void) {
+    private func verifyMove(_ item: MenuBarItem, relativeTo targetWindowID: CGWindowID, placement: Placement, attempt: Int, check: Int, generation: Int, restoreCursorLocation: CGPoint?, completion: @escaping (Bool) -> Void) {
         guard let itemWindowID = item.windowID else { completion(false); return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            guard let self else { completion(false); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self, self.operationGeneration == generation else { completion(false); return }
             let itemFrame = self.currentFrame(windowID: itemWindowID)
             let targetFrame = self.currentFrame(windowID: targetWindowID)
             let moved: Bool
@@ -406,14 +431,13 @@ final class MenuBarLayoutManager {
             case .right: moved = abs((itemFrame?.minX ?? -.infinity) - (targetFrame?.maxX ?? .infinity)) < 1
             }
             if moved {
+                DiagnosticLog.shared.record("move.verified", ["window": Int(itemWindowID), "target": Int(targetWindowID)])
                 self.logger.info("Move verification window \(itemWindowID, privacy: .public) attempt \(attempt, privacy: .public) moved=true")
                 completion(true)
-            } else if check < 2 {
-                self.verifyMove(item, relativeTo: targetWindowID, placement: placement, attempt: attempt, check: check + 1, restoreCursorLocation: restoreCursorLocation, completion: completion)
-            } else if attempt < 3 {
-                self.logger.info("Move verification window \(itemWindowID, privacy: .public) attempt \(attempt, privacy: .public) timed out")
-                self.move(item, relativeTo: targetWindowID, placement: placement, attempt: attempt + 1, restoreCursorLocation: restoreCursorLocation, completion: completion)
+            } else if check < 5 {
+                self.verifyMove(item, relativeTo: targetWindowID, placement: placement, attempt: attempt, check: check + 1, generation: generation, restoreCursorLocation: restoreCursorLocation, completion: completion)
             } else {
+                DiagnosticLog.shared.record("move.timeout", ["window": Int(itemWindowID), "target": Int(targetWindowID)])
                 self.logger.info("Move verification window \(itemWindowID, privacy: .public) failed")
                 completion(false)
             }

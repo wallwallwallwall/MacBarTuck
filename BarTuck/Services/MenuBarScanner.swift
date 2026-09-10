@@ -10,6 +10,7 @@ final class MenuBarScanner {
     private let readDisplayBounds: () -> [CGRect]
     private let ownBundleIdentifier: String?
     private let sessionIdentity = UUID().uuidString
+    private var knownMirrorPairs: [CGWindowID: Set<CGWindowID>] = [:]
 
     init(
         readWindows: @escaping () -> [[String: Any]] = MenuBarWindowServer.windowInfo,
@@ -209,7 +210,17 @@ final class MenuBarScanner {
         while let item = remaining.first {
             remaining.removeFirst()
             var members = [item]
-            if let base = anchor(for: item), items.filter({ candidate in
+            if let windowID = item.windowID, let pairedIDs = knownMirrorPairs[windowID] {
+                let known = remaining.filter { candidate in
+                    guard let otherID = candidate.windowID, pairedIDs.contains(otherID), candidate.ownerPID == item.ownerPID,
+                          abs(candidate.frame.width - item.frame.width) <= 1 else { return false }
+                    return Self.isAnonymousTitle(item.title) || Self.isAnonymousTitle(candidate.title) || item.title == candidate.title
+                }
+                members += known
+                let ids = Set(known.map(\.id))
+                remaining.removeAll { ids.contains($0.id) }
+            }
+            if members.count == 1, let base = anchor(for: item), items.filter({ candidate in
                 guard candidate.ownerPID == item.ownerPID, let other = anchor(for: candidate) else { return false }
                 return other.display == base.display && abs(candidate.frame.minX - item.frame.minX) <= 1 && abs(candidate.frame.width - item.frame.width) <= 1
             }).count == 1 {
@@ -238,6 +249,10 @@ final class MenuBarScanner {
                 return lhs == rhs ? $0.id < $1.id : lhs < rhs
             }[0]
             representative.mirrors = members.filter { $0 !== representative }
+            if members.count > 1 {
+                let windowIDs = Set(members.compactMap(\.windowID))
+                for id in windowIDs { knownMirrorPairs[id] = windowIDs.subtracting([id]) }
+            }
             representative.legacyIDs = Set(members.filter { !Self.isAnonymousTitle($0.title) }.map(\.id))
             representative.isSelected = members.contains(where: \.isSelected)
             if representative.title.contains("."),
@@ -254,6 +269,8 @@ final class MenuBarScanner {
             if representative.title == "com.apple.TextInputMenuAgent" { representative.resolvedTitle = "输入法" }
             result.append(representative)
         }
+        let currentWindowIDs = Set(items.compactMap(\.windowID))
+        knownMirrorPairs = knownMirrorPairs.filter { currentWindowIDs.contains($0.key) }
         let sorted = result.sorted { $0.frame.minX == $1.frame.minX ? $0.id < $1.id : $0.frame.minX < $1.frame.minX }
         var unidentified = 0
         for item in sorted where Self.isAnonymousTitle(item.title) {

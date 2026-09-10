@@ -25,7 +25,20 @@ private enum MenuBarIdentityTests {
         try rulePersistence()
         try panelPositioning()
         try captureIdentity()
+        try stableMirrorIdentity()
         print("MenuBarIdentityTests: \(checks) passed")
+    }
+
+    private static func stableMirrorIdentity() throws {
+        var windows = mirroredWindows()
+        let scanner = MenuBarScanner(readWindows: { windows }, readDisplayBounds: { displays }, ownBundleIdentifier: "com.bartuck.app")
+        let original = scanner.scan(selectedIDs: [])
+        windows[4] = window(5, "Item-0", x: 900, width: 34, height: 33)
+        let moving = scanner.scan(selectedIDs: [])
+        try expect(moving.count == 2, "Known mirror pairs must remain unified while one host is moving.")
+        try expect(Set(original.map(\.id)) == Set(moving.map(\.id)), "Moving a host must not change the logical row identity.")
+        windows[4][kCGWindowName as String] = "org.other.application"
+        try expect(scanner.scan(selectedIDs: []).count == 3, "A contradictory application identity must invalidate a cached pair.")
     }
 
     private static func scan(_ windows: [[String: Any]]) -> [MenuBarItem] {

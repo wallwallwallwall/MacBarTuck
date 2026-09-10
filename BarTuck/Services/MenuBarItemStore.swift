@@ -5,7 +5,7 @@ import OSLog
 
 @MainActor
 final class MenuBarItemStore: ObservableObject {
-    let permissions = PermissionManager()
+    let permissions: PermissionManager
     @Published private(set) var items: [MenuBarItem] = []
     @Published var lastActivationError: String?
     @Published private(set) var activatingItemID: String?
@@ -16,11 +16,16 @@ final class MenuBarItemStore: ObservableObject {
     @Published private(set) var displays: [DisplaySnapshot] = []
     @Published private(set) var automaticAvoidanceEnabled = true
     @Published private(set) var requiresScreenRecording = false
+    private(set) var isHiddenSectionActive = false
     let isUIPreviewMode: Bool
 
     private let logger = Logger(subsystem: "com.bartuck.app", category: "items")
-    private let preferences = PreferencesStore()
-    private let scanner = MenuBarScanner()
+    private let preferences: PreferencesStore
+    private let scanner: MenuBarScanner
+    private let captureOverride: (([MenuBarItem]) async -> [String: NSImage])?
+    private let visibilityOverride: ((MenuBarItem) -> Bool)?
+    typealias HideHandler = ([MenuBarItem], CGRect, @escaping (Int) -> Void) -> Void
+    private let hideOverride: HideHandler?
     private let captureService = MenuBarCaptureService()
     private let activator = MenuBarItemActivator()
     private let layoutManager: MenuBarLayoutManager
@@ -53,12 +58,28 @@ final class MenuBarItemStore: ObservableObject {
     private var refreshAgain = false
     private var isApplyingLayout = false
     private var shouldApplyLayoutAgain = false
-    private var layoutRepairAttempts = 0
+    private var automaticLayoutSuspended = false
+    private var automaticInputIDs = Set<String>()
+    private var isRestoringLayout = false
+    private var isTerminating = false
+
+    enum RefreshSource: Int {
+        case manual, startup, externalChange, observation
+    }
     var onImagesReady: (() -> Void)?
     var onLayoutStateChanged: (() -> Void)?
     var onLayoutOperationStateChanged: ((Bool) -> Void)?
 
-    init() {
+    init(permissions: PermissionManager? = nil, preferences: PreferencesStore = PreferencesStore(),
+         scanner: MenuBarScanner = MenuBarScanner(),
+         captureOverride: (([MenuBarItem]) async -> [String: NSImage])? = nil,
+         visibilityOverride: ((MenuBarItem) -> Bool)? = nil, hideOverride: HideHandler? = nil) {
+        self.permissions = permissions ?? PermissionManager()
+        self.preferences = preferences
+        self.scanner = scanner
+        self.captureOverride = captureOverride
+        self.visibilityOverride = visibilityOverride
+        self.hideOverride = hideOverride
         isUIPreviewMode = ProcessInfo.processInfo.arguments.contains("--ui-preview")
         layoutManager = MenuBarLayoutManager(preferences: preferences)
         layoutManagementEnabled = layoutManager.isEnabled
@@ -176,9 +197,16 @@ final class MenuBarItemStore: ObservableObject {
         }
     }
 
-    func refresh() {
+    func refresh(source: RefreshSource = .manual) {
+        DiagnosticLog.shared.record("refresh.request", ["source": source.rawValue, "layout": isApplyingLayout ? 1 : 0])
         if isUIPreviewMode {
             displays = DisplaySnapshotProvider.snapshots()
+            return
+        }
+        guard !isTerminating else { return }
+        guard !isApplyingLayout, !isRestoringLayout, activatingItemID == nil, pendingRehideItem == nil else {
+            refreshAgain = true
+            DiagnosticLog.shared.record("refresh.deferred")
             return
         }
         permissions.refresh()
@@ -199,9 +227,10 @@ final class MenuBarItemStore: ObservableObject {
         guard !isRefreshing, !isCapturing else { refreshAgain = true; return }
         isRefreshing = true
         let previousByID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-        let previousByWindowID = Dictionary(uniqueKeysWithValues: items.compactMap { item in
-            item.windowID.map { ($0, item) }
-        })
+        let previousByWindowID = Dictionary(items.flatMap { item in
+            item.windowRepresentations.compactMap { representation in representation.windowID.map { ($0, item) } }
+        }, uniquingKeysWith: { first, _ in first })
+        let previousOrder = Dictionary(uniqueKeysWithValues: items.enumerated().map { ($0.element.id, $0.offset) })
         let knownBefore = preferences.knownItemIDs
         let knownWindowIDsBefore = preferences.knownWindowIDs
         let selectedBefore = preferences.selectedIDs
@@ -218,7 +247,11 @@ final class MenuBarItemStore: ObservableObject {
             item.rule = preferences.rule(for: item)
         }
 
-        items = scanned
+        items = scanned.sorted {
+            let left = previousOrder[$0.id] ?? Int.max
+            let right = previousOrder[$1.id] ?? Int.max
+            return left == right ? $0.id < $1.id : left < right
+        }
         displays = DisplaySnapshotProvider.snapshots()
         recomputeManagedSelection()
         preferences.saveKnownItems(knownBefore.union(currentIDs))
@@ -231,21 +264,20 @@ final class MenuBarItemStore: ObservableObject {
         onLayoutStateChanged?()
         isReadyForManagedLayout = selectedItems.allSatisfy(\.hasUsableDisplayIcon)
         onImagesReady?()
-        // Reconcile selected items that are still visible after a WindowServer
-        // refresh. This is delayed until capture completes and guarded by the
-        // same real-button check as explicit layout actions, so new status
-        // items do not remain beside BarTuck while avoiding a drag during
-        // an active user click.
-
+        let stableIDs = Set(items.filter { !$0.id.hasPrefix("session|") && !$0.isAlwaysVisibleSystemItem }.map(\.id))
+        let canApplyNewItems = (source == .startup || source == .externalChange) && !stableIDs.subtracting(automaticInputIDs).isEmpty
+        automaticInputIDs = stableIDs
+        DiagnosticLog.shared.record("refresh.result", ["source": source.rawValue, "items": items.count,
+            "selected": selectedItems.count, "capture": items.filter { $0.iconImage == nil }.count])
         let captureCandidates = items.filter { $0.iconImage == nil }
         refreshImages(for: captureCandidates) { [weak self] in
             guard let self else { return }
             self.onLayoutStateChanged?()
             self.onImagesReady?()
-            self.scheduleAutomaticLayoutIfNeeded()
+            if canApplyNewItems { self.scheduleAutomaticLayoutIfNeeded() }
             if self.refreshAgain {
                 self.refreshAgain = false
-                self.scheduleRefresh(after: 0.2, reason: "coalesced refresh")
+                self.scheduleRefresh(after: 0.2, reason: "coalesced refresh", source: .observation)
             }
         }
     }
@@ -255,17 +287,17 @@ final class MenuBarItemStore: ObservableObject {
         guard signature != lastWindowSignature else { return }
         lastWindowSignature = signature
         if immediate {
-            refresh()
+            refresh(source: .externalChange)
         } else {
             scheduleRefresh(after: 0.4, reason: "menu bar window set changed")
         }
     }
 
-    private func scheduleRefresh(after delay: TimeInterval, reason: String) {
+    private func scheduleRefresh(after delay: TimeInterval, reason: String, source: RefreshSource = .externalChange) {
         refreshWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             self?.logger.debug("Refreshing after \(reason, privacy: .public)")
-            self?.refresh()
+            self?.refresh(source: source)
         }
         refreshWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
@@ -282,14 +314,16 @@ final class MenuBarItemStore: ObservableObject {
             return
         }
         let wasManaged = item.isSelected
+        guard item.rule != rule else { return }
+        DiagnosticLog.shared.record("rule.changed", ["window": Int(item.windowID ?? 0)])
         item.rule = rule
         preferences.saveRule(rule, for: item.id)
         recomputeManagedSelection()
 
         if item.isSelected, layoutManagementEnabled {
             applyLayout()
-        } else if wasManaged {
-            layoutManager.show(item)
+        } else if wasManaged, layoutManagementEnabled {
+            restoreItems([item])
         }
     }
 
@@ -357,11 +391,8 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     private func handleScreenParametersChanged() {
-        let previouslySelected = selectedItems
-        displays = DisplaySnapshotProvider.snapshots()
-        recomputeManagedSelection()
-        restoreItems(previouslySelected.filter { !$0.isSelected })
-        scheduleRefresh(after: 0.35, reason: "display configuration changed")
+        DiagnosticLog.shared.record("display.changed")
+        scheduleRefresh(after: 0.5, reason: "display configuration changed", source: .observation)
     }
 
     private func recomputeManagedSelection() {
@@ -422,11 +453,19 @@ final class MenuBarItemStore: ObservableObject {
 
     private func restoreItems(_ itemsToRestore: [MenuBarItem]) {
         guard !itemsToRestore.isEmpty, let controlItemFrame else { return }
+        cancelLayoutWork()
+        isRestoringLayout = true
+        onLayoutOperationStateChanged?(false)
         layoutOperationMessage = "正在恢复应常显的项目…"
-        layoutManager.restore(itemsToRestore, relativeTo: controlItemFrame) { [weak self] count in
-            self?.layoutOperationMessage = count > 0
-                ? "已恢复 \(count) 个菜单栏项目。"
-                : "所有菜单栏项目均已显示。"
+        let generation = layoutStartGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self, self.layoutStartGeneration == generation else { return }
+            self.layoutManager.restore(itemsToRestore, relativeTo: controlItemFrame) { [weak self] count in
+                guard let self, self.layoutStartGeneration == generation else { return }
+                self.isRestoringLayout = false
+                self.layoutOperationMessage = count == itemsToRestore.count ? "已恢复 \(count) 个菜单栏项目。" : "部分项目未能恢复，请查看日志。"
+                self.scheduleRefresh(after: 0.3, reason: "restore settled", source: .observation)
+            }
         }
     }
 
@@ -437,6 +476,8 @@ final class MenuBarItemStore: ObservableObject {
         }
         permissions.refresh()
         guard permissions.screenRecordingGranted else { completion?(); return }
+        guard !candidatesAreEmpty(target) else { completion?(); return }
+        guard !isApplyingLayout, !isRestoringLayout else { completion?(); return }
         // A panel open can arrive while the startup refresh is still
         // capturing. Do not launch a second ScreenCaptureKit enumeration;
         // overlapping captures were a major source of memory spikes and
@@ -449,7 +490,9 @@ final class MenuBarItemStore: ObservableObject {
         captureTask?.cancel()
         captureTask = Task { [weak self] in
             guard let self else { return }
-            let images = await self.captureService.capture(candidates)
+            let images: [String: NSImage]
+            if let capture = self.captureOverride { images = await capture(candidates) }
+            else { images = await self.captureService.capture(candidates) }
             guard generation == self.captureGeneration else { return }
             self.captureTask = nil
             self.isCapturing = false
@@ -461,10 +504,13 @@ final class MenuBarItemStore: ObservableObject {
                 ? nil
                 : "已载入 \(availableCount)/\(self.items.count) 个菜单栏图标。"
             self.isReadyForManagedLayout = self.selectedItems.allSatisfy(\.hasUsableDisplayIcon)
+            DiagnosticLog.shared.record("capture.result", ["requested": candidates.count, "captured": images.count])
             self.objectWillChange.send()
             completion?()
         }
     }
+
+    private func candidatesAreEmpty(_ target: [MenuBarItem]?) -> Bool { (target ?? overflowItems).isEmpty }
 
     func updateControlItemFrame(_ frame: CGRect) { controlItemFrame = frame }
 
@@ -474,7 +520,7 @@ final class MenuBarItemStore: ObservableObject {
         scanner.setOwnedStatusWindowIDs(ownedStatusWindowIDs)
         layoutManager.setStatusItemWindowIDs(control: control, hidden: hidden)
         if ownedStatusWindowIDs != previousOwnedStatusWindowIDs, !items.isEmpty {
-            scheduleRefresh(after: 0, reason: "owned status windows changed")
+            scheduleRefresh(after: 0.4, reason: "owned status windows changed", source: .observation)
         }
     }
 
@@ -493,36 +539,41 @@ final class MenuBarItemStore: ObservableObject {
         layoutManagementEnabled = enabled
         onLayoutStateChanged?()
         if enabled {
+            automaticLayoutSuspended = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in self?.applyLayout() }
         } else {
+            cancelPendingRehide()
+            isHiddenSectionActive = false
             automaticLayoutWorkItem?.cancel()
             restoreLayout()
         }
     }
 
     private func scheduleAutomaticLayoutIfNeeded() {
-        guard preferences.hasCompletedOnboarding,
+        guard !automaticLayoutSuspended, !isTerminating, !isRestoringLayout, preferences.hasCompletedOnboarding,
               layoutManagementEnabled,
               !isApplyingLayout,
               !selectedItems.isEmpty,
               isReadyForManagedLayout,
-              selectedItems.contains(where: layoutManager.isVisible) else { return }
+              selectedItems.contains(where: visibilityOverride ?? layoutManager.isVisible) else { return }
         automaticLayoutWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.automaticLayoutWorkItem = nil
-            self.applyLayout()
+            self.applyLayout(automatic: true)
         }
         automaticLayoutWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: workItem)
     }
 
-    func applyLayout() {
+    func applyLayout(automatic: Bool = false) {
         if isUIPreviewMode {
             layoutOperationMessage = "预览：当前三态规则已应用。"
             return
         }
         guard layoutManagementEnabled, !selectedItems.isEmpty else { return }
+        guard !isTerminating, !isRestoringLayout, activatingItemID == nil, pendingRehideItem == nil else { return }
+        if automatic && automaticLayoutSuspended { return }
         permissions.refresh()
         guard permissions.isReady else {
             layoutOperationMessage = "权限未就绪，未执行菜单栏移动。"
@@ -533,7 +584,7 @@ final class MenuBarItemStore: ObservableObject {
             return
         }
         if isApplyingLayout {
-            shouldApplyLayoutAgain = true
+            if !automatic { shouldApplyLayoutAgain = true }
             return
         }
         // Never begin a WindowServer status-item move while the user is in the
@@ -545,16 +596,23 @@ final class MenuBarItemStore: ObservableObject {
         }
         automaticLayoutWorkItem?.cancel()
         automaticLayoutWorkItem = nil
+        if !automatic { automaticLayoutSuspended = false }
         isApplyingLayout = true
         layoutOperationMessage = "正在应用收纳布局…"
         onLayoutOperationStateChanged?(true)
         layoutStartGeneration += 1
         let startGeneration = layoutStartGeneration
+        let planned = selectedItems
+        let needed = planned.filter(visibilityOverride ?? layoutManager.isVisible).count
+        let wasActive = isHiddenSectionActive
+        DiagnosticLog.shared.record("layout.begin", ["transaction": startGeneration, "automatic": automatic ? 1 : 0,
+            "selected": planned.count, "visible": needed])
         let start = DispatchWorkItem { [weak self] in
             guard let self, self.layoutStartGeneration == startGeneration, self.isApplyingLayout else { return }
             self.layoutStartWorkItem = nil
-            self.layoutManager.hide(selectedItems, relativeTo: self.controlItemFrame ?? .zero) { [weak self] count in
-                guard let self else { return }
+            self.executeHide(planned, frame: self.controlItemFrame ?? .zero) { [weak self] count in
+                guard let self, self.layoutStartGeneration == startGeneration else { return }
+                self.isHiddenSectionActive = wasActive || count > 0
                 // Re-expand the staging host before judging visibility. The
                 // enlarged host is what pushes the newly adjacent items off
                 // the active display. Keep the operation active during this
@@ -562,21 +620,24 @@ final class MenuBarItemStore: ObservableObject {
                 // `applyLayout` and shrink the staging host again.
                 self.onLayoutOperationStateChanged?(false)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    guard self.layoutStartGeneration == startGeneration else { return }
                     self.isApplyingLayout = false
-                    let remaining = self.selectedItems.filter(self.layoutManager.needsHiding)
-                    if remaining.isEmpty {
-                        self.layoutRepairAttempts = 0
+                    let remaining = planned.filter(self.layoutManager.needsHiding)
+                    if remaining.isEmpty && count >= needed {
                         self.layoutOperationMessage = count > 0 ? "收纳布局已更新，移动了 \(count) 个项目。" : "当前项目均已处于正确位置。"
-                    } else if self.layoutRepairAttempts < 2 {
-                        self.layoutRepairAttempts += 1
-                        self.layoutOperationMessage = "正在修复收纳布局，剩余 \(remaining.count) 个项目…"
-                        self.scheduleLayoutRetry(after: 0.4)
                     } else {
-                        self.layoutOperationMessage = "仍有 \(remaining.count) 个项目未收纳，请再次点击“应用当前布局”。"
+                        self.automaticLayoutSuspended = true
+                        self.layoutOperationMessage = "部分项目未能收起，已停止自动重试。可在通用页查看日志。"
                     }
+                    DiagnosticLog.shared.record("layout.end", ["transaction": startGeneration, "moved": count,
+                        "remaining": remaining.count, "paused": self.automaticLayoutSuspended ? 1 : 0])
                     if self.shouldApplyLayoutAgain {
                         self.shouldApplyLayoutAgain = false
-                        self.scheduleLayoutRetry(after: 0.2)
+                        if !self.automaticLayoutSuspended { self.scheduleLayoutRetry(after: 0.4) }
+                    }
+                    if self.refreshAgain {
+                        self.refreshAgain = false
+                        self.scheduleRefresh(after: 0.3, reason: "layout settled", source: .observation)
                     }
                 }
             }
@@ -592,22 +653,50 @@ final class MenuBarItemStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
+    private func cancelLayoutWork() {
+        layoutWorkItem?.cancel()
+        layoutWorkItem = nil
+        automaticLayoutWorkItem?.cancel()
+        automaticLayoutWorkItem = nil
+        layoutStartWorkItem?.cancel()
+        layoutStartWorkItem = nil
+        layoutStartGeneration += 1
+        isApplyingLayout = false
+        shouldApplyLayoutAgain = false
+        layoutManager.cancelPendingOperations()
+        DiagnosticLog.shared.record("layout.cancel", ["transaction": layoutStartGeneration])
+    }
+
+    private func executeHide(_ items: [MenuBarItem], frame: CGRect, completion: @escaping (Int) -> Void) {
+        if let hideOverride { hideOverride(items, frame, completion) }
+        else { layoutManager.hide(items, relativeTo: frame, completion: completion) }
+    }
+
     func restoreLayout(completion: @escaping () -> Void = {}) {
         if isUIPreviewMode {
             layoutOperationMessage = "预览：原菜单栏图标已恢复显示。"
             completion()
             return
         }
-        layoutStartWorkItem?.cancel()
-        layoutStartWorkItem = nil
-        layoutStartGeneration += 1
-        isApplyingLayout = false
-        guard let controlItemFrame else { completion(); return }
+        cancelLayoutWork()
+        isHiddenSectionActive = false
+        isRestoringLayout = true
+        onLayoutStateChanged?()
+        guard let controlItemFrame else { isRestoringLayout = false; completion(); return }
         layoutOperationMessage = "正在恢复菜单栏项目…"
         onLayoutOperationStateChanged?(false)
-        layoutManager.restore(selectedItems, relativeTo: controlItemFrame) { [weak self] count in
-            self?.layoutOperationMessage = count > 0 ? "已恢复 \(count) 个菜单栏项目。" : "所有菜单栏项目均已显示。"
-            completion()
+        let generation = layoutStartGeneration
+        let planned = selectedItems
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self, self.layoutStartGeneration == generation else { completion(); return }
+            self.layoutManager.restore(planned, relativeTo: controlItemFrame) { [weak self] count in
+                guard let self, self.layoutStartGeneration == generation else { completion(); return }
+                self.isRestoringLayout = false
+                DiagnosticLog.shared.record("layout.restore", ["moved": count, "requested": planned.count])
+                self.layoutOperationMessage = count == planned.count ? "原图标已显示。" : "已展开菜单栏；部分位置未能恢复，请查看日志。"
+                completion()
+                if !self.isTerminating { self.scheduleRefresh(after: 0.3, reason: "restore settled", source: .observation) }
+            }
         }
     }
 
@@ -636,6 +725,10 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     func prepareForTermination(completion: @escaping () -> Void) {
+        isTerminating = true
+        monitorTimer?.invalidate()
+        refreshWorkItem?.cancel()
+        cancelPendingRehide()
         captureGeneration += 1
         captureTask?.cancel()
         captureTask = nil
@@ -701,6 +794,10 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     func activate(_ requestedItem: MenuBarItem, mouseButton: CGMouseButton = .left, retryCount: Int = 0) {
+        guard !isApplyingLayout, !isRestoringLayout, !isTerminating else {
+            lastActivationError = "菜单栏正在调整，请稍后重试。"
+            return
+        }
         permissions.refresh()
         guard permissions.accessibilityGranted else {
             lastActivationError = "请先授予辅助功能权限。"
@@ -893,12 +990,21 @@ final class MenuBarItemStore: ObservableObject {
             NSEvent.removeMonitor(menuDismissMonitor)
             self.menuDismissMonitor = nil
         }
-        // Capture the pointer inside the actual menu/popover interaction. The
-        // original panel position is stale by this point and restoring it
-        // would reopen hover UI or leave other apps with a false hit target.
+        guard !isApplyingLayout, !isRestoringLayout, layoutManagementEnabled, !isTerminating else { return }
+        isApplyingLayout = true
+        layoutStartGeneration += 1
+        let generation = layoutStartGeneration
         onLayoutOperationStateChanged?(true)
-        layoutManager.rehide(item, restoreCursorLocation: nil) { [weak self] _ in
-            self?.onLayoutOperationStateChanged?(false)
+        layoutManager.rehide(item, restoreCursorLocation: nil) { [weak self] moved in
+            guard let self, self.layoutStartGeneration == generation else { return }
+            self.onLayoutOperationStateChanged?(false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                guard self.layoutStartGeneration == generation else { return }
+                self.isApplyingLayout = false
+                if !moved { self.automaticLayoutSuspended = true }
+                DiagnosticLog.shared.record("layout.rehide", ["transaction": generation, "moved": moved ? 1 : 0])
+                self.scheduleRefresh(after: 0.2, reason: "rehide settled", source: .observation)
+            }
         }
     }
 

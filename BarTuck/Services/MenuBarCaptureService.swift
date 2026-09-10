@@ -24,6 +24,7 @@ final class MenuBarCaptureService {
     }
 
     func capture(_ items: [MenuBarItem]) async -> [String: NSImage] {
+        guard !items.isEmpty else { return [:] }
         guard CGPreflightScreenCaptureAccess() else { return [:] }
         if !didWaitForStatusHosts {
             didWaitForStatusHosts = true
@@ -50,6 +51,7 @@ final class MenuBarCaptureService {
         }
 
         logger.info("Captured \(images.count, privacy: .public) of \(items.count, privacy: .public) logical menu bar icons")
+        DiagnosticLog.shared.record("capture.completed", ["requested": items.count, "captured": images.count])
         return images
     }
 
@@ -87,12 +89,14 @@ final class MenuBarCaptureService {
                         logger.info("Captured a blank status window \(snapshot.windowID, privacy: .public); trying compatibility capture")
                     }
                 } catch {
+                    DiagnosticLog.shared.record("capture.window.failure", ["window": Int(snapshot.windowID), "code": (error as NSError).code])
                     logger.info("ScreenCaptureKit could not capture status window \(snapshot.windowID, privacy: .public); switching to compatibility capture")
                     continue
                 }
             }
             return result
         } catch {
+            DiagnosticLog.shared.record("capture.enumeration.failure", ["code": (error as NSError).code])
             logger.error("Unable to enumerate shareable content: \(error.localizedDescription, privacy: .public)")
             return [:]
         }

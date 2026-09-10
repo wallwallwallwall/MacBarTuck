@@ -53,6 +53,7 @@ swiftc -parse-as-library "${SOURCES[@]}" \
     "$ROOT/BarTuck/Services/MenuBarEventRelay.swift" \
     "$ROOT/BarTuck/Services/PreferencesStore.swift" \
     "$ROOT/BarTuck/Services/MenuBarCaptureService.swift" \
+    "$ROOT/BarTuck/Services/DiagnosticLog.swift" \
     -o "$BUILD_DIR/MenuBarIdentityTests"
 "$BUILD_DIR/MenuBarIdentityTests"
 
