@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var store: MenuBarItemStore
+    @ObservedObject var dockVisibility: DockVisibilityController
     let showOnboarding: () -> Void
 
     @StateObject private var permissions = PermissionManager()
@@ -10,8 +11,9 @@ struct SettingsView: View {
     @State private var previewHoverEnabled = true
     @State private var selectedTab: SettingsTab
 
-    init(store: MenuBarItemStore, showOnboarding: @escaping () -> Void = {}) {
+    init(store: MenuBarItemStore, dockVisibility: DockVisibilityController, showOnboarding: @escaping () -> Void = {}) {
         self.store = store
+        self.dockVisibility = dockVisibility
         self.showOnboarding = showOnboarding
         _selectedTab = State(initialValue: SettingsTab.previewSelection)
     }
@@ -65,7 +67,7 @@ struct SettingsView: View {
         case .items:
             ItemsSettingsView(store: store, openPermissions: { selectedTab = .status })
         case .preferences:
-            PreferencesSettingsView(store: store, launchAtLogin: launchAtLogin,
+            PreferencesSettingsView(store: store, launchAtLogin: launchAtLogin, dockVisibility: dockVisibility,
                 hoverRevealEnabled: store.isUIPreviewMode ? $previewHoverEnabled : $hoverRevealEnabled,
                 showOnboarding: showOnboarding)
         case .status:

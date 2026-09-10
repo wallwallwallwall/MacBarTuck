@@ -1,4 +1,4 @@
-BarTuck 0.1.3 安装说明
+BarTuck 0.1.4 安装说明
 
 1. 将 BarTuck.app 拖入 Applications 文件夹。
 2. 在“应用程序”中打开 BarTuck。

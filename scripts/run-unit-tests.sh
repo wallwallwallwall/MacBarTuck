@@ -55,3 +55,12 @@ swiftc -parse-as-library "${SOURCES[@]}" \
     "$ROOT/BarTuck/Services/MenuBarCaptureService.swift" \
     -o "$BUILD_DIR/MenuBarIdentityTests"
 "$BUILD_DIR/MenuBarIdentityTests"
+
+swiftc -parse-as-library "${SOURCES[@]}" \
+    "$ROOT/BarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/BarTuck/Services/PreferencesStore.swift" \
+    "$ROOT/BarTuck/App/DockVisibilityController.swift" \
+    "$ROOT/BarTuck/App/AppMenuController.swift" \
+    "$ROOT/Tests/AppAccessTests.swift" \
+    -o "$BUILD_DIR/AppAccessTests"
+"$BUILD_DIR/AppAccessTests"

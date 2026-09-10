@@ -3,6 +3,7 @@ import SwiftUI
 struct PreferencesSettingsView: View {
     @ObservedObject var store: MenuBarItemStore
     @ObservedObject var launchAtLogin: LaunchAtLoginManager
+    @ObservedObject var dockVisibility: DockVisibilityController
     @Binding var hoverRevealEnabled: Bool
     let showOnboarding: () -> Void
     @State private var confirmReset = false
@@ -17,7 +18,14 @@ struct PreferencesSettingsView: View {
                     ))
                     Toggle("悬停时展开", isOn: $hoverRevealEnabled)
                 }
-                Section("启动") {
+                Section("应用") {
+                    Toggle("在程序坞中显示 BarTuck", isOn: Binding(
+                        get: { dockVisibility.showsDockIcon },
+                        set: { dockVisibility.setDockIconVisible($0) }
+                    ))
+                    if let error = dockVisibility.errorMessage {
+                        Text(error).foregroundStyle(.red).font(.caption)
+                    }
                     Toggle("登录时打开 BarTuck", isOn: Binding(
                         get: { store.isUIPreviewMode ? previewLoginEnabled : launchAtLogin.isEnabled },
                         set: { value in

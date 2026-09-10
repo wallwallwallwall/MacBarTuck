@@ -7,7 +7,8 @@ final class StatusBarController: NSObject {
     private let hiddenSectionItem: NSStatusItem
     private let store: MenuBarItemStore
     private let panelController: OverflowPanelController
-    private let showSettings: () -> Void
+    private let menuProvider: () -> NSMenu
+    private var isShowingContextMenu = false
     private let logger = Logger(subsystem: "com.bartuck.app", category: "status")
     private var hoverMonitor: Any?
     private var pointerIsAtMenuBar = false
@@ -17,7 +18,7 @@ final class StatusBarController: NSObject {
     private var isApplyingLayout = false
     private var isTerminating = false
 
-    init(store: MenuBarItemStore, showSettings: @escaping () -> Void) {
+    init(store: MenuBarItemStore, menuProvider: @escaping () -> NSMenu) {
         let defaults = UserDefaults.standard
         let arrowName = "BarTuckControlItem"
         let hiddenName = "BarTuckHiddenSection"
@@ -39,7 +40,7 @@ final class StatusBarController: NSObject {
         hiddenSectionItem = NSStatusBar.system.statusItem(withLength: hiddenLength)
         hiddenSectionItem.autosaveName = hiddenName
         self.store = store
-        self.showSettings = showSettings
+        self.menuProvider = menuProvider
         panelController = OverflowPanelController(store: store)
         super.init()
         configureHiddenSectionItem()
@@ -64,7 +65,7 @@ final class StatusBarController: NSObject {
         }
         button?.image = Self.statusBarImage(isExpanded: false)
         button?.imagePosition = .imageOnly
-        button?.toolTip = "打开 BarTuck 托盘；右键打开设置"
+        button?.toolTip = "打开 BarTuck 托盘；右键显示菜单"
         button?.setAccessibilityLabel("BarTuck 菜单栏托盘")
         button?.target = self
         button?.action = #selector(togglePanel)
@@ -127,6 +128,7 @@ final class StatusBarController: NSObject {
     }
 
     private func handleHoverPointer() {
+        guard !isShowingContextMenu else { return }
         guard hoverRevealEnabled,
               let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) else {
             pointerIsAtMenuBar = false
@@ -156,10 +158,23 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func togglePanel() {
-        if NSApp.currentEvent?.type == .rightMouseUp { showSettings(); return }
+        if NSApp.currentEvent?.type == .rightMouseUp || NSApp.currentEvent?.modifierFlags.contains(.control) == true {
+            panelController.close()
+            hoverRevealSuppressedUntilPointerLeaves = true
+            isShowingContextMenu = true
+            defer { isShowingContextMenu = false }
+            menuProvider().popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+            return
+        }
         guard let button = statusItem.button else { return }
         storeControlItemFrame(for: button)
         panelController.toggle(relativeTo: button)
+    }
+
+    func showPanel() {
+        guard let button = statusItem.button else { return }
+        storeControlItemFrame(for: button)
+        panelController.show(relativeTo: button)
     }
 
     private func storeControlItemFrame(for button: NSStatusBarButton) {

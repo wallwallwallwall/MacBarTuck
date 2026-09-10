@@ -6,7 +6,14 @@ struct BarTuckApp: App {
 
     var body: some Scene {
         Settings {
-            SettingsView(store: appDelegate.store, showOnboarding: { appDelegate.showOnboarding() })
+            SettingsView(store: appDelegate.store, dockVisibility: appDelegate.dockVisibility,
+                         showOnboarding: { appDelegate.showOnboarding() })
+        }
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("设置…") { appDelegate.showSettings() }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
         }
     }
 }

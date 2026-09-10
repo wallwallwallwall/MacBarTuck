@@ -55,6 +55,7 @@ ditto --norsrc "$ROOT/NOTICE" "$STAGING/NOTICE"
 ditto --norsrc "$ROOT/docs/runtime-qa.md" "$STAGING/docs/runtime-qa.md"
 ditto --norsrc "$ROOT/docs/open-source-references.md" "$STAGING/docs/open-source-references.md"
 ditto --norsrc "$ROOT/docs/interface-refresh.md" "$STAGING/docs/interface-refresh.md"
+ditto --norsrc "$ROOT/docs/app-access.md" "$STAGING/docs/app-access.md"
 ditto --norsrc "$ROOT/design-qa.md" "$STAGING/design-qa.md"
 mkdir -p "$STAGING/docs/screenshots"
 for screenshot in "$ROOT"/docs/screenshots/*.png; do

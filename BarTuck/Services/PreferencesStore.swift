@@ -29,6 +29,10 @@ final class PreferencesStore {
         get { defaults.bool(forKey: layoutManagementKey) }
         set { defaults.set(newValue, forKey: layoutManagementKey) }
     }
+    var showDockIcon: Bool {
+        get { defaults.object(forKey: "showDockIcon") == nil || defaults.bool(forKey: "showDockIcon") }
+        set { defaults.set(newValue, forKey: "showDockIcon") }
+    }
     var automaticAvoidanceEnabled: Bool {
         get {
             defaults.object(forKey: automaticAvoidanceKey) == nil ||

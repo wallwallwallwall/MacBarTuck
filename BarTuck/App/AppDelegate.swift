@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = MenuBarItemStore()
+    let dockVisibility = DockVisibilityController()
     private let permissions = PermissionManager()
     private let preferences = PreferencesStore()
     private var statusBarController: StatusBarController?
@@ -14,6 +15,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelPreviewWindowController: NSWindowController?
     private var isFinishingTermination = false
     private var didReplyToTermination = false
+    private lazy var menus = AppMenuController(
+        dockVisibility: dockVisibility,
+        showSettings: { [weak self] in self?.showSettings() },
+        showTray: { [weak self] in self?.statusBarController?.showPanel() },
+        hideApplication: { NSApp.hide(nil) },
+        quitApplication: { NSApp.terminate(nil) }
+    )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Logger(subsystem: "com.bartuck.app", category: "startup").info("Accessibility trusted: \(AXIsProcessTrusted(), privacy: .public)")
@@ -34,8 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        NSApp.setActivationPolicy(.accessory)
-        statusBarController = StatusBarController(store: store, showSettings: { [weak self] in self?.showSettings() })
+        statusBarController = StatusBarController(store: store, menuProvider: { [weak self] in
+            self?.menus.makeStatusMenu() ?? NSMenu()
+        })
+        dockVisibility.applyInitialPolicy()
         store.startMonitoring()
         // Startup must be observational only. Restoring offscreen system
         // items uses synthetic Command-drag events and can change WindowServer
@@ -52,7 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showSettings() {
+    func showSettings() {
+        NSApp.unhide(nil)
         if let settingsWindowController { settingsWindowController.showWindow(nil) }
         else {
             let window = NSWindow(
@@ -67,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.isMovableByWindowBackground = true
             window.appearance = NSAppearance(named: .darkAqua)
             window.contentMinSize = .init(width: 760, height: 560)
-            window.contentView = NSHostingView(rootView: SettingsView(store: store, showOnboarding: { [weak self] in
+            window.contentView = NSHostingView(rootView: SettingsView(store: store, dockVisibility: dockVisibility, showOnboarding: { [weak self] in
                 self?.showOnboarding()
             }))
             window.center()
@@ -84,6 +95,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showSettings()
         return true
     }
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? { menus.makeDockMenu() }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func showOnboarding() {
         if let onboardingWindowController {
