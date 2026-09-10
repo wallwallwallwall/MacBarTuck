@@ -2,13 +2,13 @@
 
 BarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Apple Silicon Mac。它会根据菜单栏安全宽度自动收纳可能被刘海遮挡的项目，也允许为每个项目设置“自动、常显、收纳”三态规则。
 
-![BarTuck 状态页](docs/screenshots/settings.png)
+![BarTuck 菜单项](docs/screenshots/items.png)
 
 ## 界面
 
-| 项目规则 | 偏好设置 |
+| 权限与显示器 | 通用设置 |
 | --- | --- |
-| ![项目规则](docs/screenshots/items.png) | ![偏好设置](docs/screenshots/preferences.png) |
+| ![权限与显示器](docs/screenshots/settings.png) | ![通用设置](docs/screenshots/preferences.png) |
 
 | 首次引导 | 收纳托盘 |
 | --- | --- |
@@ -32,7 +32,7 @@ BarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Appl
 
 ## 安装
 
-1. 打开 `BarTuck-0.1.2.dmg`。
+1. 打开 `BarTuck-0.1.3.dmg`。
 2. 将 `BarTuck.app` 拖入 `Applications`。
 3. 首次打开时按引导授予辅助功能和屏幕录制权限。
 4. 若 macOS 提示应用来自未识别开发者，请在 Finder 中右键应用并选择“打开”。当前开源构建使用临时签名，尚未经过 Apple 公证。
@@ -43,9 +43,10 @@ BarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Appl
 
 - 左键点击菜单栏的层叠图标：展开或收起托盘。
 - 右键点击层叠图标：打开设置。
-- 状态页：查看收纳数量、刘海安全宽度、显示器和权限状态。
-- 项目页：搜索项目并设置三态规则。
-- 偏好页：控制自动避让、原图标隐藏、悬停展开和登录启动。
+- 菜单项：搜索项目，用“显示方式”菜单选择自动、始终显示或收起。
+- 顶部“启用收纳”开关控制是否移动菜单项。“全部显示”会暂停收纳并恢复原图标。
+- 通用：设置自动避让、悬停展开和登录启动；重置设置会先请求确认。
+- 权限与显示器：查看授权状态及当前连接的显示器。
 
 macOS 的菜单栏项目顺序是全局状态，不支持为每块屏幕保留完全独立的排列。BarTuck 因此使用已连接刘海屏中最小的安全宽度计算自动规则，同时把托盘显示在用户当前操作的屏幕。
 
@@ -84,7 +85,7 @@ xcodebuild \
 ./scripts/create-dmg.sh
 ```
 
-产物位于 `dist/BarTuck-0.1.2.dmg`，并附带 SHA-256 文件。
+产物位于 `dist/BarTuck-0.1.3.dmg`，并附带 SHA-256 文件。
 
 ## 隐私与安全
 

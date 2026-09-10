@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ItemsSettingsView: View {
     @ObservedObject var store: MenuBarItemStore
+    var openPermissions: () -> Void = {}
     @State private var query = ""
 
     private var filteredItems: [MenuBarItem] {
@@ -9,187 +10,99 @@ struct ItemsSettingsView: View {
         guard !value.isEmpty else { return store.items }
         return store.items.filter {
             $0.title.localizedCaseInsensitiveContains(value) ||
-                $0.ownerName.localizedCaseInsensitiveContains(value) ||
-                $0.displayTitle.localizedCaseInsensitiveContains(value) ||
-                $0.displayOwnerName.localizedCaseInsensitiveContains(value)
+            $0.ownerName.localizedCaseInsensitiveContains(value) ||
+            $0.displayTitle.localizedCaseInsensitiveContains(value)
         }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            toolbar
-            itemList
-            legend
-        }
-        .padding(18)
-    }
-
-    private var toolbar: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(BarTuckTheme.secondaryText)
-                TextField("搜索应用或菜单项", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("搜索菜单项", text: $query).textFieldStyle(.plain)
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .opacity(query.isEmpty ? 0 : 1).disabled(query.isEmpty)
+                        .help("清除搜索").accessibilityLabel("清除搜索")
+                }
+                .padding(.horizontal, 8).frame(width: 260, height: 28)
+                .background(BarTuckTheme.deepSurface, in: RoundedRectangle(cornerRadius: 5))
+                Spacer()
+                Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless).frame(width: 28, height: 28)
+                    .help("重新扫描").accessibilityLabel("重新扫描")
+                Menu {
+                    Button("全部设为自动") { store.resetRulesToAutomatic() }
+                        .disabled(store.items.isEmpty)
+                    Button("全部显示") { store.setLayoutManagementEnabled(false) }
+                        .disabled(!store.layoutManagementEnabled)
+                } label: { Image(systemName: "ellipsis.circle") }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                .frame(width: 28, height: 28).help("更多操作").accessibilityLabel("更多操作")
             }
-            .padding(.horizontal, 10)
-            .frame(height: 34)
-            .background(BarTuckTheme.deepSurface)
-            .overlay {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(BarTuckTheme.stroke, lineWidth: 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .padding(.horizontal, 20).frame(height: 52)
 
-            BarTuckStatusPill(
-                title: store.requiresScreenRecording ? "未就绪" : "\(filteredItems.count) 项",
-                color: BarTuckTheme.accent,
-                systemImage: "menubar.rectangle"
-            )
-
-            Button {
-                store.refresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("重新扫描菜单栏")
-
-            Button("全部自动") {
-                store.resetRulesToAutomatic()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(store.items.isEmpty)
-        }
-    }
-
-    private var itemList: some View {
-        BarTuckSurface(padding: 0) {
-            Group {
-                if filteredItems.isEmpty {
-                    ContentUnavailableView(
-                        store.requiresScreenRecording ? "菜单栏读取权限未就绪" : (query.isEmpty ? "未发现菜单栏项目" : "没有匹配项目"),
-                        systemImage: store.requiresScreenRecording ? "lock.shield" : "menubar.rectangle",
-                        description: Text(store.requiresScreenRecording ? "屏幕录制授权未生效" : (query.isEmpty ? "暂无可读取项目" : "没有匹配的名称"))
-                    )
-                    .foregroundStyle(BarTuckTheme.secondaryText)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(filteredItems.enumerated()), id: \.element.id) { index, item in
-                                itemRow(item)
-                                if index < filteredItems.count - 1 {
-                                    Divider().overlay(BarTuckTheme.stroke).padding(.leading, 58)
-                                }
+            if store.requiresScreenRecording {
+                emptyState("需要屏幕录制权限", symbol: "lock.shield") {
+                    Button("查看权限", action: openPermissions)
+                }
+            } else if filteredItems.isEmpty {
+                emptyState(query.isEmpty ? "暂无菜单项" : "没有匹配的菜单项", symbol: "menubar.rectangle") {
+                    if !query.isEmpty { Button("清除搜索") { query = "" } }
+                }
+            } else {
+                Table(filteredItems) {
+                    TableColumn("菜单项") { item in
+                        HStack(spacing: 10) {
+                            MenuItemIconView(item: item, size: 20).frame(width: 28)
+                            Text(item.displayTitle).lineLimit(1)
+                            if item.windowID != nil && item.iconImage == nil {
+                                Image(systemName: "clock").foregroundStyle(.secondary)
+                                    .help("图标尚未读取")
                             }
                         }
+                        .frame(height: 34)
+                        .help(item.tooltip)
                     }
-                    .scrollIndicators(.visible)
+                    TableColumn("显示方式") { item in
+                        if item.isAlwaysVisibleSystemItem {
+                            Label("系统保留", systemImage: "lock")
+                                .foregroundStyle(.secondary).help("此项目保持显示")
+                        } else {
+                            Picker("\(item.displayTitle)的显示方式", selection: Binding(
+                                get: { item.rule }, set: { store.setRule($0, for: item) }
+                            )) {
+                                Text("自动").tag(MenuItemRule.automatic)
+                                Text("始终显示").tag(MenuItemRule.alwaysVisible)
+                                Text("收起").tag(MenuItemRule.alwaysHidden)
+                            }
+                            .labelsHidden().pickerStyle(.menu).frame(width: 128)
+                        }
+                    }.width(150)
+                }
+                .tableStyle(.inset(alternatesRowBackgrounds: true))
+            }
+            Divider()
+            HStack {
+                Text(store.isUIPreviewMode ? "界面预览 · \(filteredItems.count) 个示例" : (store.requiresScreenRecording ? "等待授权" : "\(filteredItems.count) 个菜单项"))
+                Spacer()
+                if let message = store.layoutOperationMessage {
+                    Text(message).lineLimit(1).help(message)
                 }
             }
+            .font(.system(size: 11)).foregroundStyle(.secondary)
+            .padding(.horizontal, 20).frame(height: 30)
         }
-        .frame(maxHeight: .infinity)
     }
 
-    private func itemRow(_ item: MenuBarItem) -> some View {
-        HStack(spacing: 12) {
-            MenuItemIconView(item: item, size: 24)
-                .frame(width: 34, height: 34)
-                .background(BarTuckTheme.raisedSurface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 7) {
-                    Text(item.displayTitle.isEmpty ? item.displayOwnerName : item.displayTitle)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(BarTuckTheme.primaryText)
-                        .lineLimit(1)
-                    if item.isProtectedSystemItem {
-                        BarTuckStatusPill(
-                            title: item.isAlwaysVisibleSystemItem ? "安全状态" : "系统控件",
-                            color: item.isAlwaysVisibleSystemItem ? BarTuckTheme.warning : BarTuckTheme.accent
-                        )
-                    }
-                    if item.windowID != nil && item.iconImage == nil {
-                        Text("图标待读取")
-                            .font(.system(size: 10))
-                            .foregroundStyle(BarTuckTheme.warning)
-                    }
-                }
-                Text(item.mirrors.isEmpty ? item.displayOwnerName : "\(item.displayOwnerName) · \(item.mirrors.count + 1) 块屏幕")
-                    .font(.system(size: 10))
-                    .foregroundStyle(BarTuckTheme.secondaryText)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 12)
-
-            Image(systemName: item.activationStatusSymbolName)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(item.windowID != nil || item.supportsPressAction ? BarTuckTheme.success : BarTuckTheme.warning)
-                .frame(width: 22)
-                .help(item.activationStatusHelp)
-
-            if item.isAlwaysVisibleSystemItem {
-                BarTuckStatusPill(
-                    title: "强制常显",
-                    color: BarTuckTheme.warning,
-                    systemImage: "lock.fill"
-                )
-                .frame(width: 218, alignment: .trailing)
-            } else {
-                RuleSegmentedControl(selection: item.rule) { rule in
-                    store.setRule(rule, for: item)
-                }
-            }
+    private func emptyState<Actions: View>(_ title: String, symbol: String,
+                                           @ViewBuilder actions: () -> Actions) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: symbol).font(.system(size: 28)).foregroundStyle(.secondary)
+            Text(title).font(.system(size: 15))
+            actions()
         }
-        .padding(.horizontal, 12)
-        .frame(height: 58)
-    }
-
-    private var legend: some View {
-        HStack(spacing: 14) {
-            Label("自动：按刘海安全宽度收纳", systemImage: "wand.and.stars")
-            Label("常显：始终留在菜单栏", systemImage: "eye.fill")
-            Label("收纳：始终放入托盘", systemImage: "tray.full.fill")
-            Spacer()
-        }
-        .font(.system(size: 10))
-        .foregroundStyle(BarTuckTheme.secondaryText)
-    }
-}
-
-private struct RuleSegmentedControl: View {
-    let selection: MenuItemRule
-    let onSelect: (MenuItemRule) -> Void
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(MenuItemRule.allCases, id: \.self) { rule in
-                Button {
-                    onSelect(rule)
-                } label: {
-                    Label(rule.localizedTitle, systemImage: rule.symbolName)
-                        .font(.system(size: 10, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 25)
-                        .foregroundStyle(selection == rule ? rule.tint : BarTuckTheme.secondaryText)
-                        .background(selection == rule ? rule.tint.opacity(0.14) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .help(rule.localizedTitle)
-            }
-        }
-        .padding(2)
-        .frame(width: 218, height: 31)
-        .background(BarTuckTheme.deepSurface)
-        .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(BarTuckTheme.stroke, lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

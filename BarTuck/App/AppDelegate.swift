@@ -57,13 +57,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else {
             let window = NSWindow(
                 contentRect: .init(x: 0, y: 0, width: 780, height: 580),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
             )
-            window.title = "BarTuck 设置"
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
+            window.title = store.isUIPreviewMode ? "BarTuck · 界面预览" : "BarTuck"
+            window.titlebarAppearsTransparent = false
+            window.titleVisibility = .visible
             window.isMovableByWindowBackground = true
             window.appearance = NSAppearance(named: .darkAqua)
             window.contentMinSize = .init(width: 760, height: 560)
@@ -79,6 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if flag { return true }
+        if store.isUIPreviewMode { return false }
         showSettings()
         return true
     }
@@ -89,13 +91,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             let window = NSWindow(
                 contentRect: .init(x: 0, y: 0, width: 760, height: 560),
-                styleMask: [.titled, .closable, .fullSizeContentView],
+                styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
             )
-            window.title = "欢迎使用 BarTuck"
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
+            window.title = store.isUIPreviewMode ? "设置 BarTuck · 界面预览" : "设置 BarTuck"
+            window.titleVisibility = .visible
+            window.titlebarAppearsTransparent = false
             window.isMovableByWindowBackground = true
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: .darkAqua)

@@ -649,14 +649,14 @@ final class MenuBarItemStore: ObservableObject {
         let startX = displayFrame.maxX - 520
         let y = displayFrame.minY
 
-        let samples: [(String, String, String, MenuItemRule, Bool, Bool)] = [
-            ("preview-window", "窗口布局", "WindowPilot", .automatic, true, false),
-            ("preview-focus", "专注计时", "Focus Flow", .alwaysVisible, false, false),
-            ("preview-clipboard", "剪贴板", "ClipStack", .automatic, true, false),
-            ("preview-vpn", "VPN", "Shield Link", .alwaysHidden, true, false),
-            ("preview-wifi", "WiFi", "系统菜单栏", .automatic, false, true),
-            ("preview-audio", "声音", "系统菜单栏", .alwaysVisible, false, true),
-            ("preview-recording", "Screen Recording", "系统菜单栏", .alwaysVisible, false, true)
+        let samples: [(String, String, String, MenuItemRule, Bool, Bool, String)] = [
+            ("preview-window", "窗口布局", "WindowPilot", .automatic, true, false, "macwindow"),
+            ("preview-focus", "专注计时", "Focus Flow", .alwaysVisible, false, false, "timer"),
+            ("preview-clipboard", "剪贴板", "ClipStack", .automatic, true, false, "doc.on.clipboard"),
+            ("preview-vpn", "VPN", "Shield Link", .alwaysHidden, true, false, "lock.shield"),
+            ("preview-wifi", "WiFi", "系统菜单栏", .automatic, false, true, "wifi"),
+            ("preview-audio", "声音", "系统菜单栏", .alwaysVisible, false, true, "speaker.wave.2"),
+            ("preview-recording", "Screen Recording", "系统菜单栏", .alwaysVisible, false, true, "record.circle")
         ]
 
         items = samples.enumerated().map { index, sample in
@@ -667,6 +667,7 @@ final class MenuBarItemStore: ObservableObject {
                 bundleIdentifier: sample.5 ? "com.apple.controlcenter" : "com.bartuck.preview",
                 frame: CGRect(x: startX + CGFloat(index * 42), y: y, width: 28, height: 24),
                 axElement: nil,
+                iconImage: NSImage(systemSymbolName: sample.6, accessibilityDescription: sample.1),
                 isSelected: sample.4,
                 supportsPressAction: true,
                 isProtectedSystemItem: sample.5,

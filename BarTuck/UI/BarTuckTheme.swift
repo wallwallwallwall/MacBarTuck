@@ -1,17 +1,17 @@
 import SwiftUI
 
 enum BarTuckTheme {
-    static let canvas = Color(red: 0.035, green: 0.042, blue: 0.047)
-    static let chrome = Color(red: 0.052, green: 0.061, blue: 0.067)
-    static let surface = Color(red: 0.070, green: 0.080, blue: 0.086)
-    static let raisedSurface = Color(red: 0.086, green: 0.098, blue: 0.105)
-    static let deepSurface = Color(red: 0.024, green: 0.030, blue: 0.034)
+    static let canvas = Color(nsColor: .windowBackgroundColor)
+    static let chrome = Color(nsColor: .windowBackgroundColor)
+    static let surface = Color(nsColor: .controlBackgroundColor)
+    static let raisedSurface = Color.white.opacity(0.045)
+    static let deepSurface = Color.black.opacity(0.14)
     static let stroke = Color.white.opacity(0.09)
     static let strongStroke = Color.white.opacity(0.16)
-    static let primaryText = Color(red: 0.94, green: 0.96, blue: 0.97)
-    static let secondaryText = Color(red: 0.61, green: 0.66, blue: 0.69)
-    static let accent = Color(red: 0.18, green: 0.78, blue: 0.88)
-    static let accentStrong = Color(red: 0.31, green: 0.91, blue: 0.98)
+    static let primaryText = Color.primary
+    static let secondaryText = Color.secondary
+    static let accent = Color(red: 0.34, green: 0.68, blue: 0.73)
+    static let accentStrong = accent
     static let success = Color(red: 0.35, green: 0.84, blue: 0.59)
     static let warning = Color(red: 1.00, green: 0.43, blue: 0.38)
 }
@@ -49,7 +49,7 @@ struct BarTuckSectionTitle: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(BarTuckTheme.primaryText)
             if let detail {
                 Text(detail)
@@ -74,14 +74,8 @@ struct BarTuckStatusPill: View {
                 Text(title)
             }
         }
-        .font(.system(size: 10, weight: .semibold))
+        .font(.system(size: 12))
         .foregroundStyle(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(color.opacity(0.12), in: Capsule())
-        .overlay {
-            Capsule().stroke(color.opacity(0.24), lineWidth: 1)
-        }
     }
 }
 
