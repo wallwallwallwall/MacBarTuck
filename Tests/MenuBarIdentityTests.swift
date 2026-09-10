@@ -26,7 +26,26 @@ private enum MenuBarIdentityTests {
         try panelPositioning()
         try captureIdentity()
         try stableMirrorIdentity()
+        try actualVisibility()
         print("MenuBarIdentityTests: \(checks) passed")
+    }
+
+    private static func actualVisibility() throws {
+        try expect(MenuItemSafetyPolicy.mustRemainVisible(title: "Clock"), "The fixed system clock must not block movable items.")
+        try expect(MenuItemVisibility.evaluate([true, true]) == .visible, "Selected but visible copies are not hidden.")
+        try expect(MenuItemVisibility.evaluate([false, false]) == .hidden, "Both hidden copies count as hidden.")
+        try expect(MenuItemVisibility.evaluate([true, false]) == .partial, "A visible mirror prevents claiming full hiding.")
+        try expect(MenuItemVisibility.evaluate([false, nil]) == .unknown, "A missing window is not proof of hidden status.")
+        try expect(MenuItemVisibility.evaluate([]) == .unknown, "No window data must not count as hidden.")
+        let utility = scan(mirroredWindows()).first { $0.title == "io.example.utility" }!
+        utility.isSelected = true
+        utility.updateVisibility(displayBounds: displays)
+        try expect(utility.visibility == .visible, "A hidden rule must not change actual visibility.")
+        let outside = CGRect(x: -6000, y: 0, width: 34, height: 33)
+        utility.updateVisibility(displayBounds: displays, currentFrames: [5: outside, 6: outside])
+        try expect(utility.visibility == .hidden, "Fresh WindowServer bounds must determine hidden state.")
+        utility.updateVisibility(displayBounds: displays, currentFrames: [5: outside])
+        try expect(utility.visibility == .unknown, "Disappeared mirrors invalidate the hidden claim.")
     }
 
     private static func stableMirrorIdentity() throws {

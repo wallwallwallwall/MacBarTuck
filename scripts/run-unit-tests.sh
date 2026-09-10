@@ -12,6 +12,7 @@ for source in \
     "$ROOT/BarTuck/Core/DisplayConstraint.swift" \
     "$ROOT/BarTuck/Core/MenuBarGeometry.swift" \
     "$ROOT/BarTuck/Core/MenuItemSafetyPolicy.swift" \
+    "$ROOT/BarTuck/Core/MenuItemVisibility.swift" \
     "$ROOT/BarTuck/Core/PreviewSelectionPolicy.swift" \
     "$ROOT/BarTuck/Core/OverflowPolicy.swift"
 do

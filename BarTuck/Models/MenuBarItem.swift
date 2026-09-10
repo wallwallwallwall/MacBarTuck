@@ -71,6 +71,20 @@ final class MenuBarItem: Identifiable {
     var legacyIDs: Set<String> = []
     var resolvedTitle: String?
     var resolvedApplicationIcon: NSImage?
+    var visibility: MenuItemVisibility = .unknown
+
+    func updateVisibility(displayBounds: [CGRect], currentFrames: [CGWindowID: CGRect]? = nil) {
+        visibility = MenuItemVisibility.evaluate(windowRepresentations.map { representation -> Bool? in
+            let frame: CGRect
+            if let currentFrames, let id = representation.windowID {
+                guard let current = currentFrames[id] else { return nil }
+                frame = current
+            } else { frame = representation.frame }
+            guard frame.width > 4, frame.height > 4 else { return nil }
+            return MenuBarGeometry.isVisibleMenuBarItem(frame,
+                displayBounds: representation.sourceDisplayBounds.map { [$0] } ?? displayBounds)
+        })
+    }
 
     init(id: String, title: String, ownerName: String, bundleIdentifier: String?, frame: CGRect, axElement: AXUIElement?, iconImage: NSImage? = nil, applicationIcon: NSImage? = nil, isSelected: Bool, supportsPressAction: Bool, windowID: CGWindowID? = nil, ownerPID: pid_t? = nil, isProtectedSystemItem: Bool = false, rule: MenuItemRule = .automatic) {
         self.id = id

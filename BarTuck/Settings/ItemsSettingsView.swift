@@ -80,6 +80,10 @@ struct ItemsSettingsView: View {
                             .labelsHidden().pickerStyle(.menu).frame(width: 128)
                         }
                     }.width(150)
+                    TableColumn("状态") { item in
+                        Text(store.visibilityDescription(for: item))
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }.width(104)
                 }
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
             }

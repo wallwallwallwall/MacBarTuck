@@ -8,6 +8,7 @@ enum MenuItemSafetyPolicy {
 
         return normalized.contains("screenrecording") ||
             normalized == "controlcenter" ||
+            normalized == "clock" ||
             normalized.contains("audioandvideocontrols")
     }
 }

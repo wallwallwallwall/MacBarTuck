@@ -62,6 +62,7 @@ final class MenuBarItemStore: ObservableObject {
     private var automaticInputIDs = Set<String>()
     private var isRestoringLayout = false
     private var isTerminating = false
+    private var failedLayoutIDs = Set<String>()
 
     enum RefreshSource: Int {
         case manual, startup, externalChange, observation
@@ -137,16 +138,32 @@ final class MenuBarItemStore: ObservableObject {
         )
     }
 
-    /// Items currently in BarTuck's off-screen staging area but absent
-    /// from the persisted selection set. This recovers protected macOS
-    /// controls left there by an older build, including generic Control
-    /// Center windows whose accessibility description is only "status menu"
-    /// (for example Bluetooth on macOS 26).
+    /// Rule selection is intent, not evidence that a window was hidden.
     var overflowItems: [MenuBarItem] {
-        let selectedIDs = Set(selectedItems.map(\.id))
         return items
-            .filter { selectedIDs.contains($0.id) || isOffscreen($0) }
-            .sorted { $0.frame.minX < $1.frame.minX }
+            .filter { $0.visibility == .hidden && !$0.isAlwaysVisibleSystemItem }
+    }
+
+    func visibilityDescription(for item: MenuBarItem) -> String {
+        switch item.visibility {
+        case .hidden: return "已收起"
+        case .partial: return "部分屏幕可见"
+        case .unknown: return "待确认"
+        case .visible:
+            if !item.isSelected { return "显示中" }
+            if failedLayoutIDs.contains(item.id) { return "收起失败" }
+            return layoutManagementEnabled ? "待收起" : "尚未启用"
+        }
+    }
+
+    private func refreshVisibilityFromWindows() {
+        let frames = Dictionary(MenuBarWindowServer.windowInfo().compactMap { info -> (CGWindowID, CGRect)? in
+            guard let number = MenuBarWindowServer.integer(kCGWindowNumber as String, in: info),
+                  number > 0, number <= Int(CGWindowID.max), let frame = MenuBarWindowServer.bounds(in: info) else { return nil }
+            return (CGWindowID(number), frame)
+        }, uniquingKeysWith: { first, _ in first })
+        for item in items { item.updateVisibility(displayBounds: displays.map(\.frame), currentFrames: frames) }
+        objectWillChange.send()
     }
 
     private func isOffscreen(_ item: MenuBarItem) -> Bool {
@@ -253,6 +270,7 @@ final class MenuBarItemStore: ObservableObject {
             return left == right ? $0.id < $1.id : left < right
         }
         displays = DisplaySnapshotProvider.snapshots()
+        for item in items { item.updateVisibility(displayBounds: displays.map(\.frame)) }
         recomputeManagedSelection()
         preferences.saveKnownItems(knownBefore.union(currentIDs))
         preferences.saveKnownWindowIDs(knownWindowIDsBefore.union(currentWindowIDs))
@@ -310,6 +328,7 @@ final class MenuBarItemStore: ObservableObject {
         if isUIPreviewMode {
             item.rule = rule
             item.isSelected = isManagedInPreview(item)
+            item.visibility = item.isSelected && layoutManagementEnabled ? .hidden : .visible
             objectWillChange.send()
             return
         }
@@ -317,6 +336,7 @@ final class MenuBarItemStore: ObservableObject {
         guard item.rule != rule else { return }
         DiagnosticLog.shared.record("rule.changed", ["window": Int(item.windowID ?? 0)])
         item.rule = rule
+        failedLayoutIDs.remove(item.id)
         preferences.saveRule(rule, for: item.id)
         recomputeManagedSelection()
 
@@ -357,6 +377,7 @@ final class MenuBarItemStore: ObservableObject {
             for item in items where !item.isAlwaysVisibleSystemItem {
                 item.rule = .automatic
                 item.isSelected = isManagedInPreview(item)
+                item.visibility = item.isSelected && layoutManagementEnabled ? .hidden : .visible
             }
             objectWillChange.send()
             return
@@ -378,6 +399,7 @@ final class MenuBarItemStore: ObservableObject {
             automaticAvoidanceEnabled = enabled
             for item in items {
                 item.isSelected = isManagedInPreview(item)
+                item.visibility = item.isSelected && layoutManagementEnabled ? .hidden : .visible
             }
             objectWillChange.send()
             return
@@ -527,6 +549,7 @@ final class MenuBarItemStore: ObservableObject {
     func setLayoutManagementEnabled(_ enabled: Bool) {
         if isUIPreviewMode {
             layoutManagementEnabled = enabled
+            for item in items { item.visibility = item.isSelected && enabled ? .hidden : .visible }
             layoutOperationMessage = enabled ? "预览：菜单栏布局管理已开启。" : "预览：仅保留规则，不移动原图标。"
             return
         }
@@ -603,6 +626,7 @@ final class MenuBarItemStore: ObservableObject {
         layoutStartGeneration += 1
         let startGeneration = layoutStartGeneration
         let planned = selectedItems
+        failedLayoutIDs.subtract(planned.map(\.id))
         let needed = planned.filter(visibilityOverride ?? layoutManager.isVisible).count
         let wasActive = isHiddenSectionActive
         DiagnosticLog.shared.record("layout.begin", ["transaction": startGeneration, "automatic": automatic ? 1 : 0,
@@ -622,10 +646,14 @@ final class MenuBarItemStore: ObservableObject {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     guard self.layoutStartGeneration == startGeneration else { return }
                     self.isApplyingLayout = false
-                    let remaining = planned.filter(self.layoutManager.needsHiding)
+                    self.refreshVisibilityFromWindows()
+                    let remaining = planned.filter { plannedItem in
+                        self.items.first(where: { $0.id == plannedItem.id })?.visibility != .hidden
+                    }
                     if remaining.isEmpty && count >= needed {
                         self.layoutOperationMessage = count > 0 ? "收纳布局已更新，移动了 \(count) 个项目。" : "当前项目均已处于正确位置。"
                     } else {
+                        self.failedLayoutIDs.formUnion(remaining.map(\.id))
                         self.automaticLayoutSuspended = true
                         self.layoutOperationMessage = "部分项目未能收起，已停止自动重试。可在通用页查看日志。"
                     }
@@ -637,8 +665,8 @@ final class MenuBarItemStore: ObservableObject {
                     }
                     if self.refreshAgain {
                         self.refreshAgain = false
-                        self.scheduleRefresh(after: 0.3, reason: "layout settled", source: .observation)
                     }
+                    self.scheduleRefresh(after: 0.3, reason: "layout settled", source: .observation)
                 }
             }
         }
@@ -675,6 +703,7 @@ final class MenuBarItemStore: ObservableObject {
     func restoreLayout(completion: @escaping () -> Void = {}) {
         if isUIPreviewMode {
             layoutOperationMessage = "预览：原菜单栏图标已恢复显示。"
+            for item in items { item.visibility = .visible }
             completion()
             return
         }
@@ -707,6 +736,7 @@ final class MenuBarItemStore: ObservableObject {
             for item in items where !item.isAlwaysVisibleSystemItem {
                 item.rule = .automatic
                 item.isSelected = false
+                item.visibility = .visible
             }
             objectWillChange.send()
             return
@@ -772,6 +802,7 @@ final class MenuBarItemStore: ObservableObject {
                 rule: sample.3
             )
         }
+        for item in items { item.visibility = item.isSelected ? .hidden : .visible }
         layoutManagementEnabled = true
         automaticAvoidanceEnabled = true
         isReadyForManagedLayout = true

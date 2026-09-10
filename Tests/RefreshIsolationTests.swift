@@ -33,6 +33,8 @@ enum RefreshIsolationTests {
         guard store.items.count == 1, store.selectedItems.count == 1 else {
             throw NSError(domain: "RefreshIsolation", code: 2)
         }
+        guard store.overflowItems.isEmpty else { throw NSError(domain: "RefreshIsolation", code: 10,
+            userInfo: [NSLocalizedDescriptionKey: "Visible items were advertised in the hidden tray before any move."]) }
         for _ in 0..<12 { store.refresh() }
         try await Task.sleep(for: .milliseconds(500))
         guard operations == 0 else { throw NSError(domain: "RefreshIsolation", code: 3) }
@@ -56,6 +58,6 @@ enum RefreshIsolationTests {
         hideCompletions[1](1)
         try await Task.sleep(for: .milliseconds(1200))
         guard !store.layoutManagementEnabled, !store.isHiddenSectionActive else { throw NSError(domain: "RefreshIsolation", code: 9) }
-        print("RefreshIsolationTests: 9 passed")
+        print("RefreshIsolationTests: 10 passed")
     }
 }

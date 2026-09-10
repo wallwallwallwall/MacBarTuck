@@ -48,7 +48,7 @@ struct OverflowPanelView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
                     if store.overflowItems.isEmpty {
-                        Text("暂无收纳项目")
+                        Text(store.selectedItems.isEmpty ? "没有已收起的项目" : "尚未成功收起")
                             .font(.system(size: 11))
                             .foregroundStyle(BarTuckTheme.secondaryText)
                             .padding(.horizontal, 10)
