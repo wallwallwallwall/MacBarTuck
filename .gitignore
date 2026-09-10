@@ -1,0 +1,8 @@
+.DS_Store
+.test-build/
+dist/
+work/
+docs/screenshots/*.jpg
+*.xcuserstate
+xcuserdata/
+NotchShelf.xcodeproj/project.xcworkspace/xcuserdata/

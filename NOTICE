@@ -1,0 +1,14 @@
+NotchShelf
+
+This project is an MIT-licensed derivative of OverflowBar:
+
+  https://github.com/EvanProgramming/OverflowBar
+  Source revision: a5f1588f8353123d2906aa18810a74e0816d1603
+
+Copyright (c) 2026 EvanProgramming
+
+The original MIT license is preserved in LICENSE. NotchShelf retains the
+low-level menu-bar discovery, capture, activation, restoration, and panel
+positioning foundations while adding a separate application identity,
+Apple-Silicon-only builds, automatic notch policy, display status, and a new
+interface.

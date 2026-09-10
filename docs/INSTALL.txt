@@ -1,0 +1,11 @@
+NotchShelf 0.1.0 安装说明
+
+1. 将 NotchShelf.app 拖入 Applications 文件夹。
+2. 在“应用程序”中打开 NotchShelf。
+3. 按首次启动引导授予辅助功能和屏幕录制权限。
+4. 若 macOS 提示应用来自未识别开发者，请在 Finder 中右键应用并选择“打开”。
+
+NotchShelf 仅支持 Apple Silicon（arm64）和 macOS 15.0 或更高版本。
+请勿与 iBar、Bartender、Ice 等会移动菜单栏项目的工具同时运行。
+
+当前开源构建使用临时签名，尚未经过 Apple 公证。
