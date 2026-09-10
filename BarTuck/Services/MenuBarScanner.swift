@@ -9,6 +9,7 @@ final class MenuBarScanner {
     private let readWindows: () -> [[String: Any]]
     private let readDisplayBounds: () -> [CGRect]
     private let ownBundleIdentifier: String?
+    private let sessionIdentity = UUID().uuidString
 
     init(
         readWindows: @escaping () -> [[String: Any]] = MenuBarWindowServer.windowInfo,
@@ -119,6 +120,7 @@ final class MenuBarScanner {
             guard MenuBarWindowServer.isStatusItemLayer(window),
                   let bounds = MenuBarWindowServer.bounds(in: window),
                   let identifier = MenuBarWindowServer.integer(kCGWindowNumber as String, in: window),
+                  identifier > 0, identifier <= Int(CGWindowID.max),
                   let ownerPID = MenuBarWindowServer.integer(kCGWindowOwnerPID as String, in: window) else { return nil }
             guard ownerPID != Int(getpid()), !ownedStatusWindowIDs.contains(CGWindowID(identifier)) else { return nil }
             let title = (window[kCGWindowName as String] as? String) ?? "Menu Bar Item"
@@ -142,7 +144,9 @@ final class MenuBarScanner {
         }
         var occurrences: [String: Int] = [:]
         var legacyOccurrences: [String: Int] = [:]
-        return candidates.sorted { $0.frame.minX > $1.frame.minX }.map { candidate in
+        let items = candidates.sorted {
+            $0.frame.minX == $1.frame.minX ? $0.identifier < $1.identifier : $0.frame.minX > $1.frame.minX
+        }.map { candidate in
             let occurrenceKey = "\(candidate.ownerKey)|\(candidate.title)"
             let occurrence = occurrences[occurrenceKey, default: 0]
             occurrences[occurrenceKey] = occurrence + 1
@@ -150,7 +154,16 @@ final class MenuBarScanner {
             legacyOccurrences[candidate.title] = legacyOccurrence + 1
             let isProtected = MenuBarSystemItemClassifier.isProtected(candidate.title, owner: candidate.ownerKey)
             let title = isProtected ? MenuBarSystemItemClassifier.canonicalName(candidate.title, owner: candidate.ownerKey) : candidate.title
-            let id = isProtected ? "system|\(title)|\(occurrence)" : "window|\(candidate.ownerKey)|\(candidate.title)|\(occurrence)"
+            let id: String
+            if isProtected {
+                id = "system|\(title)|\(occurrence)"
+            } else if Self.isAnonymousTitle(candidate.title) {
+                // An anonymous slot can belong to a different app next time.
+                // Never carry its positional rule across application launches.
+                id = "session|\(sessionIdentity)|\(candidate.identifier)"
+            } else {
+                id = "window|\(candidate.ownerKey)|\(candidate.title)|\(occurrence)"
+            }
             let alternateOwnerKey = candidate.ownerKey == "Control Center" ? "com.apple.controlcenter" : candidate.ownerKey
             let alternateID = "window|\(alternateOwnerKey)|\(candidate.title)|\(occurrence)"
             let legacyID = "window|\(candidate.title)|\(legacyOccurrence)"
@@ -158,6 +171,101 @@ final class MenuBarScanner {
             let displayTitle = candidate.title == "Item-0" ? "Menu Bar Item" : title
             return MenuBarItem(id: id, title: displayTitle, ownerName: isProtected ? "System Menu Bar" : candidate.owner, bundleIdentifier: candidate.ownerKey, frame: candidate.frame, axElement: nil, applicationIcon: candidate.appIcon, isSelected: isSelected, supportsPressAction: false, windowID: CGWindowID(candidate.identifier), ownerPID: pid_t(candidate.ownerPID), isProtectedSystemItem: isProtected)
         }
+        return resolveMirrors(items, windows: windows)
+    }
+
+    private struct MirrorAnchor {
+        let frame: CGRect
+        let display: CGRect
+    }
+
+    private func resolveMirrors(_ items: [MenuBarItem], windows: [[String: Any]]) -> [MenuBarItem] {
+        let displays = displayBounds()
+        let controlWidth = windows.first {
+            ($0[kCGWindowName as String] as? String) == "BarTuckControlItem"
+        }.flatMap(MenuBarWindowServer.bounds)?.width
+        let anchors: [MirrorAnchor] = windows.compactMap { info in
+            guard let controlWidth,
+                  MenuBarWindowServer.isStatusItemLayer(info),
+                  let title = info[kCGWindowName as String] as? String,
+                  title == "BarTuckControlItem" || title == ownBundleIdentifier,
+                  let frame = MenuBarWindowServer.bounds(in: info),
+                  abs(frame.width - controlWidth) <= 1,
+                  let display = displays.first(where: { $0.contains(CGPoint(x: frame.midX, y: frame.midY)) }),
+                  abs(frame.minY - display.minY) <= 4 else { return nil }
+            return MirrorAnchor(frame: frame, display: display)
+        }
+        func anchor(for item: MenuBarItem) -> MirrorAnchor? {
+            let matches = anchors.filter {
+                abs($0.frame.minY - item.frame.minY) <= 1 && abs($0.frame.height - item.frame.height) <= 1
+            }
+            if matches.count == 1 { return matches[0] }
+            let visibleMatches = matches.filter { $0.display.contains(CGPoint(x: item.frame.midX, y: item.frame.midY)) }
+            return visibleMatches.count == 1 ? visibleMatches[0] : nil
+        }
+        for item in items { item.sourceDisplayBounds = anchor(for: item)?.display }
+        var remaining = items
+        var result: [MenuBarItem] = []
+        while let item = remaining.first {
+            remaining.removeFirst()
+            var members = [item]
+            if let base = anchor(for: item), items.filter({ candidate in
+                guard candidate.ownerPID == item.ownerPID, let other = anchor(for: candidate) else { return false }
+                return other.display == base.display && abs(candidate.frame.minX - item.frame.minX) <= 1 && abs(candidate.frame.width - item.frame.width) <= 1
+            }).count == 1 {
+                let matches = remaining.filter { candidate in
+                    guard candidate.ownerPID == item.ownerPID,
+                          let other = anchor(for: candidate), other.display != base.display,
+                          abs(candidate.frame.width - item.frame.width) <= 1,
+                          abs((candidate.frame.minX - other.frame.minX) - (item.frame.minX - base.frame.minX)) <= 1
+                    else { return false }
+                    return Self.isAnonymousTitle(item.title) || Self.isAnonymousTitle(candidate.title) || item.title == candidate.title
+                }
+                // A one-to-one slot match is required. Ambiguous same-size
+                // windows stay independent; names alone never merge items.
+                let displayGroups = Dictionary(grouping: matches, by: { candidate in
+                    candidate.sourceDisplayBounds.flatMap { displays.firstIndex(of: $0) } ?? -1
+                })
+                if displayGroups.values.allSatisfy({ $0.count == 1 }) {
+                    members += matches
+                    let ids = Set(matches.map(\.id))
+                    remaining.removeAll { ids.contains($0.id) }
+                }
+            }
+            let representative = members.sorted {
+                let lhs = Self.isAnonymousTitle($0.title) ? 1 : 0
+                let rhs = Self.isAnonymousTitle($1.title) ? 1 : 0
+                return lhs == rhs ? $0.id < $1.id : lhs < rhs
+            }[0]
+            representative.mirrors = members.filter { $0 !== representative }
+            representative.legacyIDs = Set(members.filter { !Self.isAnonymousTitle($0.title) }.map(\.id))
+            representative.isSelected = members.contains(where: \.isSelected)
+            if representative.title.contains("."),
+               let app = NSRunningApplication.runningApplications(withBundleIdentifier: representative.title).first {
+                representative.resolvedTitle = app.localizedName
+                representative.resolvedApplicationIcon = app.icon
+            } else if representative.title.contains("."),
+                      let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: representative.title),
+                      let bundle = Bundle(url: url) {
+                representative.resolvedTitle = (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+                    ?? (bundle.object(forInfoDictionaryKey: "CFBundleName") as? String)
+                representative.resolvedApplicationIcon = NSWorkspace.shared.icon(forFile: url.path)
+            }
+            if representative.title == "com.apple.TextInputMenuAgent" { representative.resolvedTitle = "输入法" }
+            result.append(representative)
+        }
+        let sorted = result.sorted { $0.frame.minX == $1.frame.minX ? $0.id < $1.id : $0.frame.minX < $1.frame.minX }
+        var unidentified = 0
+        for item in sorted where Self.isAnonymousTitle(item.title) {
+            unidentified += 1
+            item.resolvedTitle = "未识别项目 \(unidentified)"
+        }
+        return sorted
+    }
+
+    private static func isAnonymousTitle(_ title: String) -> Bool {
+        let value = title.replacingOccurrences(of: " ", with: "").lowercased()
+        return value.isEmpty || value.hasPrefix("item-") || ["menubaritem", "statusitem", "statusmenu"].contains(value)
     }
 
     /// A position-independent fingerprint used to notice status-item creation,
@@ -168,6 +276,7 @@ final class MenuBarScanner {
         return Set(windows.compactMap { window in
             guard MenuBarWindowServer.isStatusItemLayer(window),
                   let identifier = MenuBarWindowServer.integer(kCGWindowNumber as String, in: window),
+                  identifier > 0, identifier <= Int(CGWindowID.max),
                   let ownerPID = MenuBarWindowServer.integer(kCGWindowOwnerPID as String, in: window),
                   ownerPID != Int(getpid()),
                   !ownedStatusWindowIDs.contains(CGWindowID(identifier)),

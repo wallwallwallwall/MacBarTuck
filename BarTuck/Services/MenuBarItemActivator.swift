@@ -3,6 +3,11 @@ import ApplicationServices
 
 final class MenuBarItemActivator {
     private var relays: [MenuBarEventRelay] = []
+    private let readWindows: () -> [[String: Any]]
+
+    init(readWindows: @escaping () -> [[String: Any]] = MenuBarWindowServer.windowInfo) {
+        self.readWindows = readWindows
+    }
 
     func activateDirectly(_ item: MenuBarItem) -> Bool {
         guard let axElement = item.axElement, item.supportsPressAction else { return false }
@@ -127,7 +132,7 @@ final class MenuBarItemActivator {
         // Never fall back to item.frame here: for a hidden item that frame is
         // intentionally negative, and WindowServer clamps it to (0, 0),
         // which opens the Apple menu instead of the requested status item.
-        guard let frame = currentFrame(windowID: windowID), frame.maxX > 0 else { return nil }
+        guard let frame = currentFrame(windowID: windowID, ownerPID: pid) else { return nil }
         let point = CGPoint(x: frame.midX, y: frame.midY)
         guard isValidMenuBarPoint(point) else { return nil }
         guard let event = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: point, mouseButton: mouseButton) else { return nil }
@@ -165,12 +170,10 @@ final class MenuBarItemActivator {
     }
 
     /// Resolves a fresh WindowServer frame before every synthetic event. The
-    /// Control Center process can rebuild a status-item window while the item
-    /// remains logically the same. If the original window number disappeared,
-    /// choose the nearest visible layer-25 window owned by that process rather
-    /// than sending a stale event to (0, 0).
-    private func visiblePoint(for item: MenuBarItem) -> CGPoint? {
-        let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
+    /// A disappeared window must be rescanned by the store. Control Center
+    /// hosts unrelated apps, so proximity is not evidence of item identity.
+    func visiblePoint(for item: MenuBarItem) -> CGPoint? {
+        let windows = readWindows()
         let records: [(id: CGWindowID, pid: pid_t, title: String, frame: CGRect)] = windows.compactMap { info in
             guard MenuBarWindowServer.isStatusItemLayer(info),
                   let id = MenuBarWindowServer.integer(kCGWindowNumber as String, in: info),
@@ -180,25 +183,12 @@ final class MenuBarItemActivator {
             let title = (info[kCGWindowName as String] as? String) ?? ""
             return (CGWindowID(id), pid_t(pid), title, frame)
         }
-        if let windowID = item.windowID,
-           let exact = records.first(where: { $0.id == windowID }) {
+        if let windowID = item.windowID {
+            guard let exact = records.first(where: { $0.id == windowID && $0.pid == item.ownerPID }) else { return nil }
+            if let display = item.sourceDisplayBounds, !display.intersects(exact.frame) { return nil }
             return CGPoint(x: exact.frame.midX, y: exact.frame.midY)
         }
-        if let ownerPID = item.ownerPID {
-            // Control Center may replace a status-item window while it is
-            // being revealed. Prefer the status item's published title before
-            // falling back to geometry; otherwise the first visible generic
-            // Item-0 window can receive the click instead.
-            if item.title != "Menu Bar Item",
-               let titled = records.first(where: { $0.pid == ownerPID && $0.title == item.title }) {
-                return CGPoint(x: titled.frame.midX, y: titled.frame.midY)
-            }
-            let preferredX = item.frame.midX
-            return records
-                .filter { $0.pid == ownerPID }
-                .min(by: { abs($0.frame.midX - preferredX) < abs($1.frame.midX - preferredX) })
-                .map { CGPoint(x: $0.frame.midX, y: $0.frame.midY) }
-        }
+        guard item.axElement != nil else { return nil }
         if #available(macOS 27.0, *), isValidMenuBarPoint(CGPoint(x: item.frame.midX, y: item.frame.midY)) {
             // A composite macOS 27 host may not publish a small layer-25
             // window at all. The AX element's current frame is the safer
@@ -232,9 +222,12 @@ final class MenuBarItemActivator {
         return displays.prefix(Int(count)).map(CGDisplayBounds)
     }
 
-    private func currentFrame(windowID: CGWindowID) -> CGRect? {
-        let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
-        guard let window = windows.first(where: { MenuBarWindowServer.integer(kCGWindowNumber as String, in: $0) == Int(windowID) }),
+    private func currentFrame(windowID: CGWindowID, ownerPID: pid_t) -> CGRect? {
+        let windows = readWindows()
+        guard let window = windows.first(where: {
+            MenuBarWindowServer.integer(kCGWindowNumber as String, in: $0) == Int(windowID) &&
+                MenuBarWindowServer.integer(kCGWindowOwnerPID as String, in: $0) == Int(ownerPID)
+        }),
               let frame = MenuBarWindowServer.bounds(in: window) else { return nil }
         return frame
     }

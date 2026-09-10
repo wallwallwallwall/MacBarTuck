@@ -10,13 +10,7 @@ final class PreferencesStore {
     private let automaticAvoidanceKey = "automaticAvoidanceEnabled"
     private let itemRulesKey = "itemRulesV1"
     private let defaultLayoutKey = "didApplyDefaultLayoutV4"
-    // UserDefaults survives replacing the application bundle. Keep completion
-    // per release so a newly installed version presents its welcome/setup flow
-    // instead of inheriting an unrelated older build's marker.
-    private var onboardingCompletedKey: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
-        return "hasCompletedOnboarding.\(version)"
-    }
+    private let onboardingCompletedKey = "hasCompletedOnboarding"
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -47,7 +41,14 @@ final class PreferencesStore {
         set { defaults.set(newValue, forKey: defaultLayoutKey) }
     }
     var hasCompletedOnboarding: Bool {
-        get { defaults.bool(forKey: onboardingCompletedKey) }
+        get {
+            if defaults.object(forKey: onboardingCompletedKey) != nil {
+                return defaults.bool(forKey: onboardingCompletedKey)
+            }
+            return defaults.dictionaryRepresentation().keys.contains {
+                $0.hasPrefix("hasCompletedOnboarding.") && defaults.bool(forKey: $0)
+            }
+        }
         set { defaults.set(newValue, forKey: onboardingCompletedKey) }
     }
 
@@ -64,6 +65,16 @@ final class PreferencesStore {
 
     func rule(for id: String) -> MenuItemRule {
         itemRules[id] ?? .automatic
+    }
+
+    func rule(for item: MenuBarItem) -> MenuItemRule {
+        guard !item.isAlwaysVisibleSystemItem else { return .alwaysVisible }
+        let rules = itemRules
+        if let current = rules[item.id] { return current }
+        let previous = item.legacyIDs.compactMap { rules[$0] }
+        if previous.contains(.alwaysVisible) { return .alwaysVisible }
+        if previous.contains(.alwaysHidden) { return .alwaysHidden }
+        return .automatic
     }
 
     func saveRule(_ rule: MenuItemRule, for id: String) {

@@ -159,7 +159,8 @@ final class MenuBarLayoutManager {
             return Self.isVisibleMenuBarFrame(frame)
         }
         guard let frame = currentFrame(windowID: windowID) else { return false }
-        return Self.isVisibleMenuBarFrame(frame)
+        return MenuBarGeometry.isVisibleMenuBarItem(frame,
+            displayBounds: item.sourceDisplayBounds.map { [$0] } ?? Self.activeDisplayBounds())
     }
 
     /// Quartz screen coordinates captured before any synthetic menu-bar event.

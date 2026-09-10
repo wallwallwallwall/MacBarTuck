@@ -7,7 +7,7 @@ import ScreenCaptureKit
 /// narrowly scoped Core Graphics compatibility path for offscreen menu items.
 @MainActor
 final class MenuBarCaptureService {
-    private struct WindowSnapshot: Sendable {
+    struct WindowSnapshot: Sendable {
         let itemID: String
         let windowID: CGWindowID
     }
@@ -15,7 +15,16 @@ final class MenuBarCaptureService {
     private let logger = Logger(subsystem: "com.bartuck.app", category: "capture")
     private var didWaitForStatusHosts = false
 
+    static func captureTargets(for items: [MenuBarItem]) -> [WindowSnapshot] {
+        items.flatMap { item in
+            item.windowRepresentations.compactMap { representation in
+                representation.windowID.map { WindowSnapshot(itemID: item.id, windowID: $0) }
+            }
+        }
+    }
+
     func capture(_ items: [MenuBarItem]) async -> [String: NSImage] {
+        guard CGPreflightScreenCaptureAccess() else { return [:] }
         if !didWaitForStatusHosts {
             didWaitForStatusHosts = true
             // macOS 26 tears down third-party hosted status items when the
@@ -23,21 +32,10 @@ final class MenuBarCaptureService {
             // scene attachment. Let both hosts finish attaching first.
             try? await Task.sleep(nanoseconds: 600_000_000)
         }
-        let snapshots = items.compactMap { item in
-            item.windowID.map { WindowSnapshot(itemID: item.id, windowID: $0) }
-        }
+        let snapshots = Self.captureTargets(for: items)
         guard !snapshots.isEmpty else { return [:] }
 
-        // ScreenCaptureKit requires Screen Recording. The legacy WindowServer
-        // image path is still usable for the small status-item windows on some
-        // macOS 26 installations even when the preflight identity is stale,
-        // so do not discard every icon before trying that compatibility path.
-        var images: [String: NSImage] = [:]
-        if CGPreflightScreenCaptureAccess() {
-            images = await captureWithScreenCaptureKit(snapshots)
-        } else {
-            logger.info("Screen capture preflight is false; using compatibility capture")
-        }
+        var images = await captureWithScreenCaptureKit(snapshots)
         let missing = snapshots.filter { images[$0.itemID] == nil }
 
         if !missing.isEmpty {
@@ -51,7 +49,7 @@ final class MenuBarCaptureService {
             images.merge(fallback) { _, new in new }
         }
 
-        logger.info("Captured \(images.count, privacy: .public) of \(snapshots.count, privacy: .public) menu bar icons")
+        logger.info("Captured \(images.count, privacy: .public) of \(items.count, privacy: .public) logical menu bar icons")
         return images
     }
 
@@ -62,6 +60,7 @@ final class MenuBarCaptureService {
             var result: [String: NSImage] = [:]
 
             for snapshot in snapshots {
+                guard result[snapshot.itemID] == nil else { continue }
                 guard !Task.isCancelled, let window = windowsByID[snapshot.windowID] else { continue }
                 let filter = SCContentFilter(desktopIndependentWindow: window)
                 let scale = max(CGFloat(filter.pointPixelScale), 1)
@@ -102,6 +101,7 @@ final class MenuBarCaptureService {
     private nonisolated static func captureWithWindowList(_ snapshots: [WindowSnapshot]) -> [String: NSImage] {
         var result: [String: NSImage] = [:]
         for snapshot in snapshots {
+            guard result[snapshot.itemID] == nil else { continue }
             guard let image = legacyWindowImage(ids: [snapshot.windowID]), hasVisibleContent(image) else { continue }
             result[snapshot.itemID] = NSImage(
                 cgImage: image,

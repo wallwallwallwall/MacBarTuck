@@ -43,3 +43,15 @@ swiftc \
     -o "$BUILD_DIR/MenuBarRuntimeTests"
 
 "$BUILD_DIR/MenuBarRuntimeTests"
+
+swiftc -parse-as-library "${SOURCES[@]}" \
+    "$ROOT/BarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/BarTuck/Services/MenuBarWindowServer.swift" \
+    "$ROOT/BarTuck/Services/MenuBarScanner.swift" \
+    "$ROOT/Tests/MenuBarIdentityTests.swift" \
+    "$ROOT/BarTuck/Services/MenuBarItemActivator.swift" \
+    "$ROOT/BarTuck/Services/MenuBarEventRelay.swift" \
+    "$ROOT/BarTuck/Services/PreferencesStore.swift" \
+    "$ROOT/BarTuck/Services/MenuBarCaptureService.swift" \
+    -o "$BUILD_DIR/MenuBarIdentityTests"
+"$BUILD_DIR/MenuBarIdentityTests"

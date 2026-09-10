@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Combine
 import OSLog
 
@@ -13,6 +14,7 @@ final class MenuBarItemStore: ObservableObject {
     @Published private(set) var isReadyForManagedLayout = false
     @Published private(set) var displays: [DisplaySnapshot] = []
     @Published private(set) var automaticAvoidanceEnabled = true
+    @Published private(set) var requiresScreenRecording = false
     let isUIPreviewMode: Bool
 
     private let logger = Logger(subsystem: "com.bartuck.app", category: "items")
@@ -126,10 +128,10 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     private func isOffscreen(_ item: MenuBarItem) -> Bool {
-        MenuBarGeometry.isOffscreenMenuItem(
-            item.frame,
-            displayBounds: displays.map(\.frame)
-        )
+        item.windowRepresentations.contains {
+            MenuBarGeometry.isOffscreenMenuItem($0.frame,
+                displayBounds: $0.sourceDisplayBounds.map { [$0] } ?? displays.map(\.frame))
+        }
     }
 
     /// Starts resilient discovery. Polling is intentional: NSWorkspace launch
@@ -178,6 +180,20 @@ final class MenuBarItemStore: ObservableObject {
             displays = DisplaySnapshotProvider.snapshots()
             return
         }
+        guard CGPreflightScreenCaptureAccess() else {
+            requiresScreenRecording = true
+            captureGeneration += 1
+            captureTask?.cancel()
+            captureTask = nil
+            isCapturing = false
+            items = []
+            displays = DisplaySnapshotProvider.snapshots()
+            isReadyForManagedLayout = false
+            iconCaptureMessage = "菜单栏读取权限未就绪"
+            onLayoutStateChanged?()
+            return
+        }
+        requiresScreenRecording = false
         guard !isRefreshing, !isCapturing else { refreshAgain = true; return }
         isRefreshing = true
         let previousByID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
@@ -197,9 +213,7 @@ final class MenuBarItemStore: ObservableObject {
         for item in scanned {
             let previous = previousByID[item.id] ?? item.windowID.flatMap { previousByWindowID[$0] }
             item.iconImage = previous?.iconImage
-            item.rule = item.isProtectedSystemItem
-                ? .alwaysVisible
-                : preferences.rule(for: item.id)
+            item.rule = preferences.rule(for: item)
         }
 
         items = scanned
@@ -221,7 +235,7 @@ final class MenuBarItemStore: ObservableObject {
         // items do not remain beside BarTuck while avoiding a drag during
         // an active user click.
 
-        let captureCandidates = preferences.hasCompletedOnboarding ? overflowItems : items
+        let captureCandidates = items.filter { $0.iconImage == nil }
         refreshImages(for: captureCandidates) { [weak self] in
             guard let self else { return }
             self.onLayoutStateChanged?()
@@ -361,13 +375,14 @@ final class MenuBarItemStore: ObservableObject {
             policySource = items.filter { item in
                 item.rule == .alwaysHidden ||
                     isOffscreen(item) ||
-                    item.frame.intersects(constrainedDisplay.frame)
+                    item.representation(on: constrainedDisplay.frame) != nil
             }
         } else {
             policySource = items
         }
 
         let policyItems = policySource.map { item in
+            let geometryItem = constrainedDisplay.flatMap { item.representation(on: $0.frame) } ?? item
             let effectiveRule: MenuItemRule = if item.isAlwaysVisibleSystemItem {
                 .alwaysVisible
             } else if !automaticAvoidanceEnabled && item.rule == .automatic {
@@ -378,11 +393,12 @@ final class MenuBarItemStore: ObservableObject {
 
             return OverflowPolicyItem(
                 id: item.id,
-                width: Double(item.frame.width),
-                position: Double(item.frame.minX),
+                width: Double(geometryItem.frame.width),
+                position: Double(geometryItem.frame.minX),
                 rule: effectiveRule,
                 isProtected: item.isAlwaysVisibleSystemItem,
-                isOffscreen: isOffscreen(item)
+                isOffscreen: MenuBarGeometry.isOffscreenMenuItem(geometryItem.frame,
+                    displayBounds: constrainedDisplay.map { [$0.frame] } ?? displays.map(\.frame))
             )
         }
 
@@ -417,6 +433,7 @@ final class MenuBarItemStore: ObservableObject {
             completion?()
             return
         }
+        guard CGPreflightScreenCaptureAccess() else { completion?(); return }
         // A panel open can arrive while the startup refresh is still
         // capturing. Do not launch a second ScreenCaptureKit enumeration;
         // overlapping captures were a major source of memory spikes and
@@ -436,12 +453,10 @@ final class MenuBarItemStore: ObservableObject {
             for (id, image) in images {
                 self.items.first(where: { $0.id == id })?.iconImage = image
             }
-            let availableCount = candidates.filter { candidate in
-                self.items.first(where: { $0.id == candidate.id })?.displayImage != nil
-            }.count
-            self.iconCaptureMessage = candidates.isEmpty
+            let availableCount = self.items.filter { $0.iconImage != nil }.count
+            self.iconCaptureMessage = self.items.isEmpty
                 ? nil
-                : "已载入 \(availableCount)/\(candidates.count) 个菜单栏图标。"
+                : "已载入 \(availableCount)/\(self.items.count) 个菜单栏图标。"
             self.isReadyForManagedLayout = self.selectedItems.allSatisfy(\.hasUsableDisplayIcon)
             self.objectWillChange.send()
             completion?()
@@ -464,6 +479,10 @@ final class MenuBarItemStore: ObservableObject {
         if isUIPreviewMode {
             layoutManagementEnabled = enabled
             layoutOperationMessage = enabled ? "预览：菜单栏布局管理已开启。" : "预览：仅保留规则，不移动原图标。"
+            return
+        }
+        guard !enabled || (AXIsProcessTrusted() && CGPreflightScreenCaptureAccess()) else {
+            layoutOperationMessage = "请先授予辅助功能和屏幕录制权限。"
             return
         }
         layoutManager.isEnabled = enabled
@@ -500,6 +519,10 @@ final class MenuBarItemStore: ObservableObject {
             return
         }
         guard layoutManagementEnabled, !selectedItems.isEmpty else { return }
+        guard AXIsProcessTrusted(), CGPreflightScreenCaptureAccess() else {
+            layoutOperationMessage = "权限未就绪，未执行菜单栏移动。"
+            return
+        }
         guard isReadyForManagedLayout else {
             layoutOperationMessage = "正在等待所选图标准备完成，暂未应用布局。"
             return
@@ -671,7 +694,18 @@ final class MenuBarItemStore: ObservableObject {
         )
     }
 
-    func activate(_ item: MenuBarItem, mouseButton: CGMouseButton = .left, retryCount: Int = 0) {
+    func activate(_ requestedItem: MenuBarItem, mouseButton: CGMouseButton = .left, retryCount: Int = 0) {
+        guard AXIsProcessTrusted() else {
+            lastActivationError = "请先授予辅助功能权限。"
+            return
+        }
+        let logicalItem = items.first { $0.id == requestedItem.id } ?? requestedItem
+        let mouseScreen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
+        let display = mouseScreen.flatMap { screen -> CGRect? in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
+            return CGDisplayBounds(number.uint32Value)
+        }
+        let item = logicalItem.activationTarget(on: display)
         guard activatingItemID == nil else { return }
         cancelPendingRehide()
         activatingItemID = item.id
@@ -787,6 +821,7 @@ final class MenuBarItemStore: ObservableObject {
         // and the click. A single fresh pass handles that race without
         // returning to the old multi-second activation transaction.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            self?.refresh()
             self?.activate(item, mouseButton: mouseButton, retryCount: retryCount + 1)
         }
     }
@@ -798,6 +833,7 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     private func rehideAfterNextUserClick(_ item: MenuBarItem) {
+        guard layoutManagementEnabled, item.isSelected, !item.isAlwaysVisibleSystemItem else { return }
         pendingRehideItem = item
 
         // Popovers do not emit NSMenu tracking notifications. Install this

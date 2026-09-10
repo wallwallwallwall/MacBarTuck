@@ -7,6 +7,7 @@ enum MenuItemSafetyPolicy {
             .lowercased()
 
         return normalized.contains("screenrecording") ||
+            normalized == "controlcenter" ||
             normalized.contains("audioandvideocontrols")
     }
 }

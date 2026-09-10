@@ -1,6 +1,26 @@
 import CoreGraphics
 
 enum MenuBarGeometry {
+    static func panelAnchor(buttonFrames: [CGRect], pointer: CGPoint,
+                            displayFrames: [CGRect], menuBarHeight: CGFloat) -> CGRect? {
+        let validFrames = buttonFrames.filter { frame in
+            frame.width > 0 && frame.height > 0 && displayFrames.contains { display in
+                display.insetBy(dx: -1, dy: -1).contains(CGPoint(x: frame.midX, y: frame.midY)) &&
+                    frame.maxY >= display.maxY - menuBarHeight - 8
+            }
+        }
+        if let display = displayFrames.first(where: { $0.insetBy(dx: -1, dy: -1).contains(pointer) }),
+           pointer.y >= display.maxY - menuBarHeight - 8 {
+            return validFrames.first { display.contains(CGPoint(x: $0.midX, y: $0.midY)) }
+                ?? CGRect(x: pointer.x - 1, y: display.maxY - menuBarHeight, width: 2, height: menuBarHeight)
+        }
+        return validFrames.first
+    }
+
+    static func appKitFrame(fromQuartz frame: CGRect, primaryScreenHeight: CGFloat) -> CGRect {
+        CGRect(x: frame.minX, y: primaryScreenHeight - frame.maxY, width: frame.width, height: frame.height)
+    }
+
     static func isVisibleMenuBarItem(
         _ frame: CGRect,
         displayBounds: [CGRect]

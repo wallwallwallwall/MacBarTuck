@@ -43,7 +43,7 @@ struct ItemsSettingsView: View {
             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
 
             BarTuckStatusPill(
-                title: "\(filteredItems.count) 项",
+                title: store.requiresScreenRecording ? "未就绪" : "\(filteredItems.count) 项",
                 color: BarTuckTheme.accent,
                 systemImage: "menubar.rectangle"
             )
@@ -71,9 +71,9 @@ struct ItemsSettingsView: View {
             Group {
                 if filteredItems.isEmpty {
                     ContentUnavailableView(
-                        query.isEmpty ? "未发现菜单栏项目" : "没有匹配项目",
-                        systemImage: "menubar.rectangle",
-                        description: Text(query.isEmpty ? "授权辅助功能后重新扫描。" : "换一个关键词试试。")
+                        store.requiresScreenRecording ? "菜单栏读取权限未就绪" : (query.isEmpty ? "未发现菜单栏项目" : "没有匹配项目"),
+                        systemImage: store.requiresScreenRecording ? "lock.shield" : "menubar.rectangle",
+                        description: Text(store.requiresScreenRecording ? "屏幕录制授权未生效" : (query.isEmpty ? "暂无可读取项目" : "没有匹配的名称"))
                     )
                     .foregroundStyle(BarTuckTheme.secondaryText)
                 } else {
@@ -112,8 +112,13 @@ struct ItemsSettingsView: View {
                             color: item.isAlwaysVisibleSystemItem ? BarTuckTheme.warning : BarTuckTheme.accent
                         )
                     }
+                    if item.windowID != nil && item.iconImage == nil {
+                        Text("图标待读取")
+                            .font(.system(size: 10))
+                            .foregroundStyle(BarTuckTheme.warning)
+                    }
                 }
-                Text(item.displayOwnerName)
+                Text(item.mirrors.isEmpty ? item.displayOwnerName : "\(item.displayOwnerName) · \(item.mirrors.count + 1) 块屏幕")
                     .font(.system(size: 10))
                     .foregroundStyle(BarTuckTheme.secondaryText)
                     .lineLimit(1)

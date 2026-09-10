@@ -277,59 +277,18 @@ extension NSStatusBarButton {
             }
             return ($0[kCGWindowName as String] as? String) == "BarTuckControlItem"
         })
-        if let matchedWindow, let coreGraphicsFrame = MenuBarWindowServer.bounds(in: matchedWindow) {
-            let screen = NSScreen.screens.first(where: { $0.frame.minX <= coreGraphicsFrame.midX && $0.frame.maxX >= coreGraphicsFrame.midX }) ?? NSScreen.main
-            if let screen,
-               coreGraphicsFrame.width > 0,
-               coreGraphicsFrame.height > 0,
-               coreGraphicsFrame.minY <= NSStatusBar.system.thickness + 8 {
-                return CGRect(
-                    x: coreGraphicsFrame.minX,
-                    y: screen.frame.maxY - coreGraphicsFrame.maxY,
-                    width: coreGraphicsFrame.width,
-                    height: coreGraphicsFrame.height
-                )
-            }
+        var frames: [CGRect] = []
+        if let matchedWindow, let quartzFrame = MenuBarWindowServer.bounds(in: matchedWindow),
+           let primary = NSScreen.screens.first {
+            frames.append(MenuBarGeometry.appKitFrame(fromQuartz: quartzFrame, primaryScreenHeight: primary.frame.maxY))
         }
         if let window {
-            let frame = window.convertToScreen(convert(bounds, to: nil))
-            if let screen = NSScreen.screens.first(where: {
-                $0.frame.insetBy(dx: -2, dy: -2).contains(CGPoint(x: frame.midX, y: frame.midY))
-            }),
-               frame.width > 0,
-               frame.height > 0,
-               frame.midY >= screen.frame.maxY - NSStatusBar.system.thickness - 8 {
-                return frame
-            }
+            frames.append(window.convertToScreen(convert(bounds, to: nil)))
         }
-
-        // Hosted status items can report a zero-origin AppKit window while
-        // still exposing their real screen rectangle through Accessibility.
-        let axFrame = self.accessibilityFrame()
-        if axFrame.width > 0,
-           axFrame.height > 0,
-           let screen = NSScreen.screens.first(where: {
-               $0.frame.insetBy(dx: -2, dy: -2).contains(CGPoint(x: axFrame.midX, y: axFrame.midY))
-           }),
-           axFrame.maxY >= screen.frame.maxY - NSStatusBar.system.thickness - 8 {
-            return axFrame
-        }
-
-        // macOS 26 may host an NSStatusItem inside Control Center without
-        // publishing a dedicated layer-25 window for its autosave name. In
-        // that case AppKit can return a zero-origin frame. While the pointer
-        // is in the menu bar it is the only reliable on-screen anchor; never
-        // pass the invalid frame through to panel positioning.
-        let mouse = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }),
-              mouse.y >= screen.frame.maxY - NSStatusBar.system.thickness - 8 else {
-            return nil
-        }
-        return CGRect(
-            x: mouse.x - 1,
-            y: screen.frame.maxY - NSStatusBar.system.thickness,
-            width: 2,
-            height: NSStatusBar.system.thickness
+        frames.append(accessibilityFrame())
+        return MenuBarGeometry.panelAnchor(
+            buttonFrames: frames, pointer: NSEvent.mouseLocation,
+            displayFrames: NSScreen.screens.map(\.frame), menuBarHeight: NSStatusBar.system.thickness
         )
     }
 }

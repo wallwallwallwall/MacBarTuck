@@ -34,6 +34,10 @@ struct SettingsView: View {
             launchAtLogin.refresh()
             store.refresh()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            permissions.refresh()
+            store.refresh()
+        }
         .alert(
             "BarTuck",
             isPresented: Binding(

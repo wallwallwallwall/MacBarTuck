@@ -34,10 +34,7 @@ enum MenuBarSystemItemClassifier {
         if normalized.contains("audioandvideocontrols") || normalized.contains("audiovideomodule") {
             return "Audio and Video Controls"
         }
-        // While capture is active, Control Center exposes the privacy/media
-        // indicators as BentoBox/AudioVideoModule windows. They are OS-owned
-        // security indicators rather than draggable status items.
-        if normalized.contains("bentobox") { return "Screen Recording" }
+        if normalized.contains("bentobox") { return "Control Center" }
         if isProtected(title, owner: owner) && normalize(owner ?? "").contains("controlcenter") {
             return "Control Center Item"
         }
@@ -69,6 +66,11 @@ final class MenuBarItem: Identifiable {
     let applicationIcon: NSImage?
     var isSelected: Bool
     var rule: MenuItemRule
+    var mirrors: [MenuBarItem] = []
+    var sourceDisplayBounds: CGRect?
+    var legacyIDs: Set<String> = []
+    var resolvedTitle: String?
+    var resolvedApplicationIcon: NSImage?
 
     init(id: String, title: String, ownerName: String, bundleIdentifier: String?, frame: CGRect, axElement: AXUIElement?, iconImage: NSImage? = nil, applicationIcon: NSImage? = nil, isSelected: Bool, supportsPressAction: Bool, windowID: CGWindowID? = nil, ownerPID: pid_t? = nil, isProtectedSystemItem: Bool = false, rule: MenuItemRule = .automatic) {
         self.id = id
@@ -88,7 +90,8 @@ final class MenuBarItem: Identifiable {
     }
 
     var displayTitle: String {
-        switch title.lowercased() {
+        if let resolvedTitle { return resolvedTitle }
+        return switch title.lowercased() {
         case "menu bar item": "菜单栏项目"
         case "screen recording": "屏幕录制"
         case "audio and video controls": "音频与视频控制"
@@ -113,17 +116,37 @@ final class MenuBarItem: Identifiable {
     var tooltip: String {
         displayTitle.isEmpty ? displayOwnerName : "\(displayOwnerName) · \(displayTitle)"
     }
-    /// Control Center-hosted status windows contain monochrome template glyphs.
-    /// Recolor those captures so white menu-bar glyphs remain visible on a
-    /// light BarTuck panel/settings surface; application-owned images keep
-    /// their original colors.
+    /// Preserve colors in captured glyphs, including system privacy badges.
     var usesTemplateIcon: Bool {
-        iconImage != nil && (ownerName == "Control Center" || isProtectedSystemItem)
+        iconImage?.isTemplate == true
     }
     var isAlwaysVisibleSystemItem: Bool {
         isProtectedSystemItem && MenuItemSafetyPolicy.mustRemainVisible(title: title)
     }
-    var displayImage: NSImage? { iconImage ?? applicationIcon }
+    var displayImage: NSImage? { iconImage ?? resolvedApplicationIcon ?? applicationIcon }
+
+    var windowRepresentations: [MenuBarItem] { [self] + mirrors }
+
+    func representation(on display: CGRect) -> MenuBarItem? {
+        windowRepresentations.first { $0.sourceDisplayBounds == display }
+            ?? windowRepresentations.first {
+                $0.sourceDisplayBounds == nil && MenuBarGeometry.isVisibleMenuBarItem($0.frame, displayBounds: [display])
+            }
+    }
+
+    func activationTarget(on display: CGRect?) -> MenuBarItem {
+        guard let display, let source = representation(on: display), source !== self else { return self }
+        let target = MenuBarItem(id: id, title: source.title, ownerName: source.ownerName,
+                                 bundleIdentifier: source.bundleIdentifier, frame: source.frame,
+                                 axElement: source.axElement, iconImage: iconImage,
+                                 applicationIcon: applicationIcon, isSelected: isSelected,
+                                 supportsPressAction: source.supportsPressAction, windowID: source.windowID,
+                                 ownerPID: source.ownerPID, isProtectedSystemItem: isProtectedSystemItem, rule: rule)
+        target.sourceDisplayBounds = source.sourceDisplayBounds
+        target.resolvedTitle = resolvedTitle
+        target.resolvedApplicationIcon = resolvedApplicationIcon
+        return target
+    }
     /// The activation path used by the item. WindowServer-backed items do not
     /// expose an Accessibility press action, but they can still be activated
     /// directly without moving the user's cursor or waiting for AX traversal.
@@ -138,7 +161,8 @@ final class MenuBarItem: Identifiable {
         return "当前无法通过辅助功能激活"
     }
     var hasUsableDisplayIcon: Bool {
-        displayImage != nil || NSImage(systemSymbolName: fallbackSymbolName, accessibilityDescription: nil) != nil
+        if windowID != nil { return iconImage != nil }
+        return displayImage != nil || NSImage(systemSymbolName: fallbackSymbolName, accessibilityDescription: nil) != nil
     }
 
     var fallbackSymbolName: String {
