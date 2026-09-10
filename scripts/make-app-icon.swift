@@ -3,9 +3,9 @@ import AppKit
 let fileManager = FileManager.default
 let root = URL(fileURLWithPath: fileManager.currentDirectoryPath)
 let output = CommandLine.arguments.dropFirst().first.map(URL.init(fileURLWithPath:))
-    ?? root.appendingPathComponent("NotchShelf/Resources/NotchShelf.icns")
+    ?? root.appendingPathComponent("BarTuck/Resources/BarTuck.icns")
 let workDirectory = root.appendingPathComponent("work/AppIcon", isDirectory: true)
-let iconset = workDirectory.appendingPathComponent("NotchShelf.iconset", isDirectory: true)
+let iconset = workDirectory.appendingPathComponent("BarTuck.iconset", isDirectory: true)
 
 try? fileManager.removeItem(at: workDirectory)
 try fileManager.createDirectory(at: iconset, withIntermediateDirectories: true)
@@ -81,7 +81,7 @@ func writePNG(_ image: NSImage, pixels: Int, to url: URL) throws {
         colorSpaceName: .deviceRGB,
         bytesPerRow: 0,
         bitsPerPixel: 0
-    ) else { throw NSError(domain: "NotchShelfIcon", code: 1) }
+    ) else { throw NSError(domain: "BarTuckIcon", code: 1) }
 
     representation.size = NSSize(width: pixels, height: pixels)
     NSGraphicsContext.saveGraphicsState()
@@ -91,7 +91,7 @@ func writePNG(_ image: NSImage, pixels: Int, to url: URL) throws {
     NSGraphicsContext.restoreGraphicsState()
 
     guard let data = representation.representation(using: .png, properties: [:]) else {
-        throw NSError(domain: "NotchShelfIcon", code: 2)
+        throw NSError(domain: "BarTuckIcon", code: 2)
     }
     try data.write(to: url)
 }

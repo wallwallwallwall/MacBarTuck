@@ -1,4 +1,4 @@
-NotchShelf
+BarTuck
 
 This project is an MIT-licensed derivative of OverflowBar:
 
@@ -7,7 +7,7 @@ This project is an MIT-licensed derivative of OverflowBar:
 
 Copyright (c) 2026 EvanProgramming
 
-The original MIT license is preserved in LICENSE. NotchShelf retains the
+The original MIT license is preserved in LICENSE. BarTuck retains the
 low-level menu-bar discovery, capture, activation, restoration, and panel
 positioning foundations while adding a separate application identity,
 Apple-Silicon-only builds, automatic notch policy, display status, and a new

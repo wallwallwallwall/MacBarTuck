@@ -1,8 +1,8 @@
-# NotchShelf
+# BarTuck
 
-NotchShelf 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Apple Silicon Mac。它会根据菜单栏安全宽度自动收纳可能被刘海遮挡的项目，也允许为每个项目设置“自动、常显、收纳”三态规则。
+BarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Apple Silicon Mac。它会根据菜单栏安全宽度自动收纳可能被刘海遮挡的项目，也允许为每个项目设置“自动、常显、收纳”三态规则。
 
-![NotchShelf 状态页](docs/screenshots/settings.png)
+![BarTuck 状态页](docs/screenshots/settings.png)
 
 ## 界面
 
@@ -32,8 +32,8 @@ NotchShelf 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 A
 
 ## 安装
 
-1. 打开 `NotchShelf-0.1.0.dmg`。
-2. 将 `NotchShelf.app` 拖入 `Applications`。
+1. 打开 `BarTuck-0.1.0.dmg`。
+2. 将 `BarTuck.app` 拖入 `Applications`。
 3. 首次打开时按引导授予辅助功能和屏幕录制权限。
 4. 若 macOS 提示应用来自未识别开发者，请在 Finder 中右键应用并选择“打开”。当前开源构建使用临时签名，尚未经过 Apple 公证。
 
@@ -47,7 +47,7 @@ NotchShelf 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 A
 - 项目页：搜索项目并设置三态规则。
 - 偏好页：控制自动避让、原图标隐藏、悬停展开和登录启动。
 
-macOS 的菜单栏项目顺序是全局状态，不支持为每块屏幕保留完全独立的排列。NotchShelf 因此使用已连接刘海屏中最小的安全宽度计算自动规则，同时把托盘显示在用户当前操作的屏幕。
+macOS 的菜单栏项目顺序是全局状态，不支持为每块屏幕保留完全独立的排列。BarTuck 因此使用已连接刘海屏中最小的安全宽度计算自动规则，同时把托盘显示在用户当前操作的屏幕。
 
 ## 从源码构建
 
@@ -55,8 +55,8 @@ macOS 的菜单栏项目顺序是全局状态，不支持为每块屏幕保留�
 
 ```bash
 xcodebuild \
-  -project NotchShelf.xcodeproj \
-  -scheme NotchShelf \
+  -project BarTuck.xcodeproj \
+  -scheme BarTuck \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath work/DerivedData-Debug \
@@ -84,11 +84,11 @@ xcodebuild \
 ./scripts/create-dmg.sh
 ```
 
-产物位于 `dist/NotchShelf-0.1.0.dmg`，并附带 SHA-256 文件。
+产物位于 `dist/BarTuck-0.1.0.dmg`，并附带 SHA-256 文件。
 
 ## 隐私与安全
 
-完整说明见 [PRIVACY.md](PRIVACY.md)。NotchShelf 不包含网络请求、用户账号或分析 SDK。菜单栏图标截图仅保留在进程内存中；规则、开关和已发现项目标识保存在本机 `UserDefaults`。
+完整说明见 [PRIVACY.md](PRIVACY.md)。BarTuck 不包含网络请求、用户账号或分析 SDK。菜单栏图标截图仅保留在进程内存中；规则、开关和已发现项目标识保存在本机 `UserDefaults`。
 
 录屏、麦克风、摄像头等 macOS 隐私指示器会被强制保持可见，不能设置为收纳。
 
@@ -96,11 +96,11 @@ xcodebuild \
 
 - 当前版本未使用 Developer ID 签名，也未经过 Apple 公证。
 - macOS 更新可能改变菜单栏窗口结构，需要后续适配。
-- 个别应用会动态重建菜单栏项目，NotchShelf 会周期性重新发现，但短时间内可能显示备用图标。
+- 个别应用会动态重建菜单栏项目，BarTuck 会周期性重新发现，但短时间内可能显示备用图标。
 - 与其他菜单栏整理工具同时运行会产生布局冲突。
 
 ## 开源来源
 
-NotchShelf 基于 MIT 许可的 [OverflowBar](https://github.com/EvanProgramming/OverflowBar) 开发，固定来源提交为 `a5f1588f8353123d2906aa18810a74e0816d1603`。原版权和许可证保留在 [LICENSE](LICENSE) 与 [NOTICE](NOTICE) 中。
+BarTuck 基于 MIT 许可的 [OverflowBar](https://github.com/EvanProgramming/OverflowBar) 开发，固定来源提交为 `a5f1588f8353123d2906aa18810a74e0816d1603`。原版权和许可证保留在 [LICENSE](LICENSE) 与 [NOTICE](NOTICE) 中。
 
 欢迎通过 [CONTRIBUTING.md](CONTRIBUTING.md) 中的流程参与开发。

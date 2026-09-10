@@ -1,6 +1,6 @@
-# 参与 NotchShelf 开发
+# 参与 BarTuck 开发
 
-感谢参与 NotchShelf。提交改动前请先确认目标仍是 Apple Silicon、macOS 15+ 和本地优先的菜单栏工具。
+感谢参与 BarTuck。提交改动前请先确认目标仍是 Apple Silicon、macOS 15+ 和本地优先的菜单栏工具。
 
 ## 开发环境
 
@@ -14,8 +14,8 @@
 ./scripts/run-unit-tests.sh
 
 xcodebuild \
-  -project NotchShelf.xcodeproj \
-  -scheme NotchShelf \
+  -project BarTuck.xcodeproj \
+  -scheme BarTuck \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath work/DerivedData-Debug \
@@ -26,13 +26,13 @@ xcodebuild \
 界面改动可以使用安全预览，不会创建菜单栏宿主或移动真实图标：
 
 ```bash
-open -n work/DerivedData-Debug/Build/Products/Debug/NotchShelf.app \
+open -n work/DerivedData-Debug/Build/Products/Debug/BarTuck.app \
   --args --ui-preview --ui-preview-tab=status
 
-open -n work/DerivedData-Debug/Build/Products/Debug/NotchShelf.app \
+open -n work/DerivedData-Debug/Build/Products/Debug/BarTuck.app \
   --args --ui-preview --ui-preview-onboarding
 
-open -n work/DerivedData-Debug/Build/Products/Debug/NotchShelf.app \
+open -n work/DerivedData-Debug/Build/Products/Debug/BarTuck.app \
   --args --ui-preview --ui-preview-panel
 ```
 

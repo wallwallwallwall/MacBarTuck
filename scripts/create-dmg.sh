@@ -3,14 +3,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/NotchShelf/Resources/Info.plist")"
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/BarTuck/Resources/Info.plist")"
 DERIVED_DATA="$ROOT/work/DerivedData-Release"
-TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/NotchShelf-dmg.XXXXXX")"
+TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/BarTuck-dmg.XXXXXX")"
 STAGING="$TEMP_ROOT/dmg-root"
 DIST="$ROOT/dist"
-APP_SOURCE="$DERIVED_DATA/Build/Products/Release/NotchShelf.app"
-APP_STAGED="$STAGING/NotchShelf.app"
-DMG_NAME="NotchShelf-$VERSION.dmg"
+APP_SOURCE="$DERIVED_DATA/Build/Products/Release/BarTuck.app"
+APP_STAGED="$STAGING/BarTuck.app"
+DMG_NAME="BarTuck-$VERSION.dmg"
 DMG_PATH="$DIST/$DMG_NAME"
 
 trap 'rm -rf "$TEMP_ROOT"' EXIT INT TERM
@@ -20,8 +20,8 @@ mkdir -p "$STAGING/.background" "$DIST"
 rm -f "$DMG_PATH" "$DMG_PATH.sha256"
 
 xcodebuild \
-  -project "$ROOT/NotchShelf.xcodeproj" \
-  -scheme NotchShelf \
+  -project "$ROOT/BarTuck.xcodeproj" \
+  -scheme BarTuck \
   -configuration Release \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath "$DERIVED_DATA" \
@@ -37,7 +37,7 @@ ditto --norsrc "$APP_SOURCE" "$APP_STAGED"
 # staging copy; the source tree and build product remain untouched.
 xattr -cr "$APP_STAGED"
 
-ARCHS_FOUND="$(lipo -archs "$APP_STAGED/Contents/MacOS/NotchShelf")"
+ARCHS_FOUND="$(lipo -archs "$APP_STAGED/Contents/MacOS/BarTuck")"
 if [[ "$ARCHS_FOUND" != "arm64" ]]; then
   print -u2 "Unexpected executable architectures: $ARCHS_FOUND"
   exit 1
@@ -58,7 +58,7 @@ xattr -cr "$STAGING"
 codesign --verify --deep --strict --verbose=2 "$APP_STAGED"
 
 hdiutil create \
-  -volname "NotchShelf $VERSION" \
+  -volname "BarTuck $VERSION" \
   -srcfolder "$STAGING" \
   -format UDZO \
   -imagekey zlib-level=9 \

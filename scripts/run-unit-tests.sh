@@ -7,13 +7,13 @@ BUILD_DIR="$ROOT/.test-build"
 SOURCES=()
 
 for source in \
-    "$ROOT/NotchShelf/Core/MenuItemRule.swift" \
-    "$ROOT/NotchShelf/Core/MenuItemRuleCodec.swift" \
-    "$ROOT/NotchShelf/Core/DisplayConstraint.swift" \
-    "$ROOT/NotchShelf/Core/MenuBarGeometry.swift" \
-    "$ROOT/NotchShelf/Core/MenuItemSafetyPolicy.swift" \
-    "$ROOT/NotchShelf/Core/PreviewSelectionPolicy.swift" \
-    "$ROOT/NotchShelf/Core/OverflowPolicy.swift"
+    "$ROOT/BarTuck/Core/MenuItemRule.swift" \
+    "$ROOT/BarTuck/Core/MenuItemRuleCodec.swift" \
+    "$ROOT/BarTuck/Core/DisplayConstraint.swift" \
+    "$ROOT/BarTuck/Core/MenuBarGeometry.swift" \
+    "$ROOT/BarTuck/Core/MenuItemSafetyPolicy.swift" \
+    "$ROOT/BarTuck/Core/PreviewSelectionPolicy.swift" \
+    "$ROOT/BarTuck/Core/OverflowPolicy.swift"
 do
     if [[ -f "$source" ]]; then
         SOURCES+=("$source")
