@@ -12,6 +12,7 @@ for source in \
     "$ROOT/NotchShelf/Core/DisplayConstraint.swift" \
     "$ROOT/NotchShelf/Core/MenuBarGeometry.swift" \
     "$ROOT/NotchShelf/Core/MenuItemSafetyPolicy.swift" \
+    "$ROOT/NotchShelf/Core/PreviewSelectionPolicy.swift" \
     "$ROOT/NotchShelf/Core/OverflowPolicy.swift"
 do
     if [[ -f "$source" ]]; then

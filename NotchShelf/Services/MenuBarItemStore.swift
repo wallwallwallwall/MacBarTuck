@@ -261,8 +261,7 @@ final class MenuBarItemStore: ObservableObject {
         guard !item.isAlwaysVisibleSystemItem else { return }
         if isUIPreviewMode {
             item.rule = rule
-            item.isSelected = rule == .alwaysHidden ||
-                (rule == .automatic && previewAutomaticManagedIDs.contains(item.id))
+            item.isSelected = isManagedInPreview(item)
             objectWillChange.send()
             return
         }
@@ -307,7 +306,7 @@ final class MenuBarItemStore: ObservableObject {
         if isUIPreviewMode {
             for item in items where !item.isAlwaysVisibleSystemItem {
                 item.rule = .automatic
-                item.isSelected = previewAutomaticManagedIDs.contains(item.id)
+                item.isSelected = isManagedInPreview(item)
             }
             objectWillChange.send()
             return
@@ -327,8 +326,8 @@ final class MenuBarItemStore: ObservableObject {
     func setAutomaticAvoidanceEnabled(_ enabled: Bool) {
         if isUIPreviewMode {
             automaticAvoidanceEnabled = enabled
-            for item in items where item.rule == .automatic {
-                item.isSelected = enabled && previewAutomaticManagedIDs.contains(item.id)
+            for item in items {
+                item.isSelected = isManagedInPreview(item)
             }
             objectWillChange.send()
             return
@@ -660,6 +659,16 @@ final class MenuBarItemStore: ObservableObject {
 
     private var previewAutomaticManagedIDs: Set<String> {
         ["preview-window", "preview-clipboard"]
+    }
+
+    private func isManagedInPreview(_ item: MenuBarItem) -> Bool {
+        PreviewSelectionPolicy.isManaged(
+            itemID: item.id,
+            rule: item.rule,
+            isProtected: item.isAlwaysVisibleSystemItem,
+            automaticAvoidanceEnabled: automaticAvoidanceEnabled,
+            automaticManagedIDs: previewAutomaticManagedIDs
+        )
     }
 
     func activate(_ item: MenuBarItem, mouseButton: CGMouseButton = .left, retryCount: Int = 0) {

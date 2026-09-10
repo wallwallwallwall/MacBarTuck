@@ -36,6 +36,12 @@ open -n work/DerivedData-Debug/Build/Products/Debug/NotchShelf.app \
   --args --ui-preview --ui-preview-panel
 ```
 
+构建 Debug 应用后，可以一次验证全部安全预览入口。该脚本逐个确认窗口已显示且进程未崩溃，不会创建真实菜单栏项目：
+
+```bash
+./scripts/run-ui-smoke-tests.sh
+```
+
 ## 提交要求
 
 - 保留 `LICENSE` 和 `NOTICE` 中的 OverflowBar 署名与固定来源提交。

@@ -70,6 +70,14 @@ xcodebuild \
 ./scripts/run-unit-tests.sh
 ```
 
+当前测试集覆盖 36 个规则、持久化、多屏坐标和安全预览状态边界。
+
+构建 Debug 应用后运行 8 个安全界面冒烟场景：
+
+```bash
+./scripts/run-ui-smoke-tests.sh
+```
+
 创建 Release DMG：
 
 ```bash
