@@ -148,14 +148,29 @@ final class MenuBarItem: Identifiable {
         let owner = displayOwnerName(for: language)
         return title.isEmpty ? owner : "\(owner) · \(title)"
     }
-    /// Preserve colors in captured glyphs, including system privacy badges.
-    var usesTemplateIcon: Bool {
-        iconImage?.isTemplate == true
+    /// The overflow tray favors an application's full-color icon when one can
+    /// be resolved. Protected system controls keep their item-specific glyph.
+    var displayImage: NSImage? {
+        if isProtectedSystemItem { return menuBarImage }
+        return resolvedApplicationIcon ?? applicationIcon ?? iconImage
     }
+
+    var usesApplicationIconForDisplay: Bool {
+        !isProtectedSystemItem && (resolvedApplicationIcon != nil || applicationIcon != nil)
+    }
+
+    var usesTemplateIcon: Bool {
+        displayImage?.isTemplate == true
+    }
+
+    /// Settings describe the scanned menu-bar item, so they continue to show
+    /// the captured glyph instead of substituting the tray presentation.
+    var menuBarImage: NSImage? { iconImage ?? resolvedApplicationIcon ?? applicationIcon }
+    var usesTemplateMenuBarIcon: Bool { menuBarImage?.isTemplate == true }
+
     var isAlwaysVisibleSystemItem: Bool {
         isProtectedSystemItem && MenuItemSafetyPolicy.mustRemainVisible(title: title)
     }
-    var displayImage: NSImage? { iconImage ?? resolvedApplicationIcon ?? applicationIcon }
 
     var windowRepresentations: [MenuBarItem] { [self] + mirrors }
 

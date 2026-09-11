@@ -25,6 +25,7 @@ private enum MenuBarIdentityTests {
         try rulePersistence()
         try panelPositioning()
         try captureIdentity()
+        try iconPresentation()
         try stableMirrorIdentity()
         try actualVisibility()
         print("MenuBarIdentityTests: \(checks) passed")
@@ -181,6 +182,65 @@ private enum MenuBarIdentityTests {
         try expect(!utility.usesTemplateIcon, "Captured system glyphs must retain their original colors.")
         try expect(MenuBarSystemItemClassifier.canonicalName("BentoBox-0") == "Control Center", "The Control Center launcher must not be mislabeled as screen recording.")
         try expect(MenuItemSafetyPolicy.mustRemainVisible(title: "Control Center"), "The system control entry must remain reachable.")
+    }
+
+    private static func iconPresentation() throws {
+        let captured = NSImage(size: NSSize(width: 24, height: 24))
+        captured.isTemplate = true
+        let bundled = NSImage(size: NSSize(width: 64, height: 64))
+        let resolved = NSImage(size: NSSize(width: 128, height: 128))
+        let thirdParty = MenuBarItem(
+            id: "third-party",
+            title: "com.example.utility",
+            ownerName: "Control Center",
+            bundleIdentifier: "Control Center",
+            frame: .zero,
+            axElement: nil,
+            iconImage: captured,
+            applicationIcon: bundled,
+            isSelected: true,
+            supportsPressAction: false
+        )
+        thirdParty.resolvedApplicationIcon = resolved
+
+        try expect(thirdParty.displayImage === resolved,
+                   "Third-party tray items must prefer the resolved application icon over the captured monochrome glyph.")
+        try expect(!thirdParty.usesTemplateIcon,
+                   "Tray rendering must use the template flag from the application icon actually selected for display.")
+        try expect(thirdParty.menuBarImage === captured,
+                   "Settings must retain the captured menu-bar glyph when one is available.")
+        let system = MenuBarItem(
+            id: "system",
+            title: "WiFi",
+            ownerName: "System Menu Bar",
+            bundleIdentifier: "com.apple.controlcenter",
+            frame: .zero,
+            axElement: nil,
+            iconImage: captured,
+            applicationIcon: bundled,
+            isSelected: false,
+            supportsPressAction: false,
+            isProtectedSystemItem: true
+        )
+        system.resolvedApplicationIcon = resolved
+        try expect(system.displayImage === captured,
+                   "Protected system tray items must keep their specific captured status icon.")
+        try expect(system.usesTemplateIcon,
+                   "System tray rendering must retain the selected captured icon's template behavior.")
+
+        let fallback = MenuBarItem(
+            id: "fallback",
+            title: "Utility",
+            ownerName: "Utility",
+            bundleIdentifier: "com.example.utility",
+            frame: .zero,
+            axElement: nil,
+            iconImage: captured,
+            isSelected: true,
+            supportsPressAction: false
+        )
+        try expect(fallback.displayImage === captured,
+                   "A third-party tray item without an application icon must fall back to its captured glyph.")
     }
 
     private static let displays = [CGRect(x: 0, y: 0, width: 1512, height: 982),

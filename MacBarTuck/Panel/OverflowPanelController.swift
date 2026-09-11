@@ -139,8 +139,10 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         let usableFrame = usableFrame(for: screen)
         guard !usableFrame.isNull, usableFrame.width > 0, usableFrame.height > 0 else { return false }
 
-        let retuckWidth: CGFloat = store.temporarilyVisibleItems.isEmpty ? 0 : 45
-        let desiredWidth = max(CGFloat(store.overflowItems.count) * OverflowPanelView.itemSlotWidth + 58 + retuckWidth, 154)
+        let desiredWidth = OverflowPanelView.preferredWidth(
+            itemCount: store.overflowItems.count,
+            showsRetuck: !store.temporarilyVisibleItems.isEmpty
+        )
         let maximumWidth = max(96, min(720, usableFrame.width - 16))
         let width = min(desiredWidth, maximumWidth)
         let height = OverflowPanelView.preferredHeight

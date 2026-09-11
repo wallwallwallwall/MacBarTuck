@@ -11,6 +11,10 @@ struct OverflowItemView: View {
     @EnvironmentObject private var language: AppLanguageController
     @State private var isHovering = false
 
+    private var iconSize: CGFloat {
+        item.usesApplicationIconForDisplay ? 28 : 22
+    }
+
     var body: some View {
         Button(action: action) {
             Group {
@@ -21,13 +25,19 @@ struct OverflowItemView: View {
                         .scaledToFit()
                         .foregroundStyle(item.usesTemplateIcon && colorScheme == .dark ? Color.white : Color.primary)
                 }
-                else { Image(systemName: item.fallbackSymbolName).resizable().scaledToFit().padding(4).opacity(0.75) }
+                else {
+                    Image(systemName: item.fallbackSymbolName)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(3)
+                        .opacity(0.78)
+                }
             }
-            .frame(width: 23, height: 20)
-            .padding(4)
+            .frame(width: iconSize, height: iconSize)
+            .frame(width: 34, height: 34)
             .background {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isHovering ? MacBarTuckTheme.accent.opacity(0.16) : Color.clear)
+                    .fill(isHovering ? MacBarTuckTheme.accent.opacity(0.18) : Color.clear)
             }
         }
         .buttonStyle(OverflowItemButtonStyle(reduceMotion: reduceMotion))
@@ -35,14 +45,14 @@ struct OverflowItemView: View {
             if isTemporarilyVisible {
                 Circle()
                     .fill(MacBarTuckTheme.accentStrong)
-                    .frame(width: 5, height: 5)
+                    .frame(width: 6, height: 6)
                     .overlay(Circle().stroke(MacBarTuckTheme.deepSurface, lineWidth: 1))
-                    .offset(x: -5, y: -4)
+                    .offset(x: -5, y: -5)
                     .allowsHitTesting(false)
             }
         }
         .overlay { RightClickCaptureView(action: rightAction) }
-        .frame(width: OverflowPanelView.itemSlotWidth, height: 32)
+        .frame(width: OverflowPanelView.itemSlotWidth, height: 40)
         .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .onHover { hovering in
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) { isHovering = hovering }

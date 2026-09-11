@@ -1,6 +1,6 @@
 # 开源参考
 
-核验日期：2026-09-10。读取 GitHub API、上游 README、源码和许可证；未安装或运行这些参考软件。上游宣称支持不等于 MacBarTuck 已验证支持。
+核验日期：2026-09-11。读取 GitHub API、上游 README、源码和许可证；未安装或运行这些参考软件。上游宣称支持不等于 MacBarTuck 已验证支持。
 
 ## 已采用
 
@@ -10,7 +10,7 @@
 ## 仅参考功能设计
 
 - [Ice](https://github.com/jordanbaird/Ice)：GPL-3.0，核验时最近推送为 2025-09-20。参考独立托盘、项目搜索、快捷键和自动收起的交互，不复制 GPL 源码或素材进 MIT 工程。
-- [Thaw](https://github.com/thaw-app/Thaw)：GPL-3.0，核验时最近推送为 2026-09-09。参考配置备份、显示器场景和问题诊断。其 [FAQ](https://github.com/thaw-app/Thaw/blob/development/FREQUENT_ISSUES.md) 明确列出多屏切换、动态菜单项身份和 macOS 27 兼容性问题，因此不照搬 README 的兼容性承诺。
+- [Thaw](https://github.com/thaw-app/Thaw)：GPL-3.0，核验时最近推送为 2026-09-11。参考配置备份、显示器场景和问题诊断。0.1.11 还核对了其固定提交 `0d23b56f` 中的 [应用图标回退](https://github.com/thaw-app/Thaw/blob/0d23b56fdb9d827a2d9942159ce54f1c900c26a4/Thaw/MenuBar/IceBar/MenuBarItemIconFallback.swift) 与 [0.82 高度比例](https://github.com/thaw-app/Thaw/blob/0d23b56fdb9d827a2d9942159ce54f1c900c26a4/Thaw/MenuBar/IceBar/IceBar.swift)；MacBarTuck 仅采用“应用图标更易识别、系统项目保留精确状态图标”的产品判断，使用现有 AppKit 数据独立实现，不复制 GPL 源码。其 [FAQ](https://github.com/thaw-app/Thaw/blob/development/FREQUENT_ISSUES.md) 明确列出多屏切换、动态菜单项身份和 macOS 27 兼容性问题，因此不照搬 README 的兼容性承诺。
 
 ## 扩展顺序
 

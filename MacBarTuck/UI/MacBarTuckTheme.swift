@@ -87,12 +87,12 @@ struct MenuItemIconView: View {
 
     var body: some View {
         Group {
-            if let image = item.displayImage {
+            if let image = item.menuBarImage {
                 Image(nsImage: image)
-                    .renderingMode(item.usesTemplateIcon ? .template : .original)
+                    .renderingMode(item.usesTemplateMenuBarIcon ? .template : .original)
                     .resizable()
                     .scaledToFit()
-                    .foregroundStyle(item.usesTemplateIcon && colorScheme == .dark ? MacBarTuckTheme.primaryText : Color.primary)
+                    .foregroundStyle(item.usesTemplateMenuBarIcon && colorScheme == .dark ? MacBarTuckTheme.primaryText : Color.primary)
             } else {
                 Image(systemName: item.fallbackSymbolName)
                     .font(.system(size: size * 0.72, weight: .semibold))

@@ -19,9 +19,19 @@ struct OverflowPanelView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var language: AppLanguageController
 
-    static let preferredHeight: CGFloat = 50
+    static let preferredHeight: CGFloat = 56
 
-    static let itemSlotWidth: CGFloat = 38
+    static let itemSlotWidth: CGFloat = 44
+    private static let itemSpacing: CGFloat = 2
+    private static let baseChromeWidth: CGFloat = 65
+    private static let retuckChromeWidth: CGFloat = 51
+
+    static func preferredWidth(itemCount: Int, showsRetuck: Bool) -> CGFloat {
+        let count = max(0, itemCount)
+        let itemWidth = CGFloat(count) * itemSlotWidth
+        let spacingWidth = CGFloat(max(0, count - 1)) * itemSpacing
+        return max(itemWidth + spacingWidth + baseChromeWidth + (showsRetuck ? retuckChromeWidth : 0), 154)
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -37,18 +47,18 @@ struct OverflowPanelView: View {
     private var panelSurface: some View {
         HStack(spacing: 5) {
             Image(systemName: "rectangle.stack.fill")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(MacBarTuckTheme.accentStrong)
-                .frame(width: 30, height: 30)
+                .frame(width: 34, height: 34)
                 .background(MacBarTuckTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .help(language.text("panel.help"))
 
             Rectangle()
                 .fill(MacBarTuckTheme.strongStroke)
-                .frame(width: 1, height: 23)
+                .frame(width: 1, height: 28)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 2) {
+                HStack(spacing: Self.itemSpacing) {
                     if store.overflowItems.isEmpty {
                         Text(store.selectedItems.isEmpty ? language.text("panel.empty") : language.text("panel.not_hidden"))
                             .font(.system(size: 11))
@@ -71,7 +81,7 @@ struct OverflowPanelView: View {
             if !store.temporarilyVisibleItems.isEmpty {
                 Rectangle()
                     .fill(MacBarTuckTheme.strongStroke)
-                    .frame(width: 1, height: 23)
+                    .frame(width: 1, height: 28)
 
                 Button(action: onRetuck) {
                     HStack(spacing: 3) {
@@ -80,7 +90,7 @@ struct OverflowPanelView: View {
                             .font(.system(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(MacBarTuckTheme.accentStrong)
-                    .frame(minWidth: 30, minHeight: 30)
+                    .frame(minWidth: 34, minHeight: 34)
                     .padding(.horizontal, 3)
                     .background(MacBarTuckTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
                 }

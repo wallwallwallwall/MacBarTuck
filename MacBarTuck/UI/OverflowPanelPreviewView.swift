@@ -6,8 +6,10 @@ struct OverflowPanelPreviewView: View {
     @EnvironmentObject private var language: AppLanguageController
 
     private var panelWidth: CGFloat {
-        let retuckWidth: CGFloat = store.temporarilyVisibleItems.isEmpty ? 0 : 45
-        return max(CGFloat(store.overflowItems.count) * OverflowPanelView.itemSlotWidth + 58 + retuckWidth, 154)
+        OverflowPanelView.preferredWidth(
+            itemCount: store.overflowItems.count,
+            showsRetuck: !store.temporarilyVisibleItems.isEmpty
+        )
     }
 
     var body: some View {

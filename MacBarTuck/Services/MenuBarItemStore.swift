@@ -794,29 +794,31 @@ final class MenuBarItemStore: ObservableObject {
         let startX = displayFrame.maxX - 520
         let y = displayFrame.minY
 
-        let samples: [(String, String, String, MenuItemRule, Bool, Bool, String)] = [
-            ("preview-window", "Window Layout", "WindowPilot", .automatic, true, false, "macwindow"),
-            ("preview-focus", "Focus Timer", "Focus Flow", .alwaysVisible, false, false, "timer"),
-            ("preview-clipboard", "Clipboard", "ClipStack", .automatic, true, false, "doc.on.clipboard"),
-            ("preview-vpn", "VPN", "Shield Link", .alwaysHidden, true, false, "lock.shield"),
-            ("preview-wifi", "WiFi", "System Menu Bar", .automatic, false, true, "wifi"),
-            ("preview-audio", "Sound", "System Menu Bar", .alwaysVisible, false, true, "speaker.wave.2"),
-            ("preview-recording", "Screen Recording", "System Menu Bar", .alwaysVisible, false, true, "record.circle")
+        let samples: [(id: String, title: String, owner: String, rule: MenuItemRule,
+                       selected: Bool, system: Bool, symbol: String, appBundleID: String?)] = [
+            ("preview-window", "Window Layout", "Shortcuts", .automatic, true, false, "macwindow", "com.apple.shortcuts"),
+            ("preview-focus", "Focus Timer", "Clock", .alwaysVisible, false, false, "timer", "com.apple.clock"),
+            ("preview-clipboard", "Clipboard", "Notes", .automatic, true, false, "doc.on.clipboard", "com.apple.Notes"),
+            ("preview-vpn", "VPN", "Passwords", .alwaysHidden, true, false, "lock.shield", "com.apple.Passwords"),
+            ("preview-wifi", "WiFi", "System Menu Bar", .automatic, false, true, "wifi", nil),
+            ("preview-audio", "Sound", "System Menu Bar", .alwaysVisible, false, true, "speaker.wave.2", nil),
+            ("preview-recording", "Screen Recording", "System Menu Bar", .alwaysVisible, false, true, "record.circle", nil)
         ]
 
         items = samples.enumerated().map { index, sample in
             MenuBarItem(
-                id: sample.0,
-                title: sample.1,
-                ownerName: sample.2,
-                bundleIdentifier: sample.5 ? "com.apple.controlcenter" : "com.bartuck.preview",
+                id: sample.id,
+                title: sample.title,
+                ownerName: sample.owner,
+                bundleIdentifier: sample.system ? "com.apple.controlcenter" : sample.appBundleID,
                 frame: CGRect(x: startX + CGFloat(index * 42), y: y, width: 28, height: 24),
                 axElement: nil,
-                iconImage: NSImage(systemSymbolName: sample.6, accessibilityDescription: sample.1),
-                isSelected: sample.4,
+                iconImage: NSImage(systemSymbolName: sample.symbol, accessibilityDescription: sample.title),
+                applicationIcon: sample.appBundleID.flatMap(Self.previewApplicationIcon),
+                isSelected: sample.selected,
                 supportsPressAction: true,
-                isProtectedSystemItem: sample.5,
-                rule: sample.3
+                isProtectedSystemItem: sample.system,
+                rule: sample.rule
             )
         }
         for item in items { item.visibility = item.isSelected ? .hidden : .visible }
@@ -827,6 +829,13 @@ final class MenuBarItemStore: ObservableObject {
         isReadyForManagedLayout = true
         iconCaptureMessage = language.text("store.preview.capture")
         layoutOperationMessage = nil
+    }
+
+    private static func previewApplicationIcon(bundleIdentifier: String) -> NSImage? {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier),
+              let icon = NSWorkspace.shared.icon(forFile: url.path).copy() as? NSImage else { return nil }
+        icon.isTemplate = false
+        return icon
     }
 
     private var previewAutomaticManagedIDs: Set<String> {
