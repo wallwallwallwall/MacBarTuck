@@ -66,9 +66,11 @@ struct PreferencesSettingsView: View {
                         Button(language.text("preferences.apply"), systemImage: "checkmark") { store.applyLayout() }
                             .disabled(!store.layoutManagementEnabled || store.selectedItems.isEmpty)
                         if !store.temporarilyVisibleItems.isEmpty {
-                            Button(language.text("panel.retuck"), systemImage: "arrow.down.to.line") {
+                            Button(language.text("panel.retuck.count", store.temporarilyVisibleItems.count),
+                                   systemImage: "arrow.uturn.backward.circle.fill") {
                                 store.retuckTemporarilyVisibleItems()
                             }
+                            .tint(MacBarTuckTheme.retuckAction)
                         }
                         Button(language.text("preferences.show_all"), systemImage: "arrow.uturn.backward") { store.setLayoutManagementEnabled(false) }
                             .disabled(!store.layoutManagementEnabled)

@@ -120,6 +120,7 @@
 "panel.empty" = "No Tucked Items";
 "panel.not_hidden" = "Items Have Not Been Tucked Yet";
 "panel.retuck" = "Retuck";
+"panel.retuck.count" = "Retuck: %d";
 "panel.temporary.help" = "This item is temporarily visible in the menu bar. Retuck visible items when finished.";
 "preview.safe" = "Safe Preview";
 "preview.no_status_item" = "No Menu Bar Items Created";

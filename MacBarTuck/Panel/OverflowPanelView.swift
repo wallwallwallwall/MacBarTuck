@@ -24,7 +24,8 @@ struct OverflowPanelView: View {
     static let itemSlotWidth: CGFloat = 44
     private static let itemSpacing: CGFloat = 2
     private static let baseChromeWidth: CGFloat = 65
-    private static let retuckChromeWidth: CGFloat = 51
+    private static let retuckButtonWidth: CGFloat = 114
+    private static let retuckChromeWidth: CGFloat = retuckButtonWidth + 11
 
     static func preferredWidth(itemCount: Int, showsRetuck: Bool) -> CGFloat {
         let count = max(0, itemCount)
@@ -84,19 +85,26 @@ struct OverflowPanelView: View {
                     .frame(width: 1, height: 28)
 
                 Button(action: onRetuck) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.down.to.line")
-                        Text("\(store.temporarilyVisibleItems.count)")
-                            .font(.system(size: 10, weight: .semibold))
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.uturn.backward.circle.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(language.text("panel.retuck.count", store.temporarilyVisibleItems.count))
+                            .font(.system(size: 11, weight: .semibold))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
-                    .foregroundStyle(MacBarTuckTheme.accentStrong)
-                    .frame(minWidth: 34, minHeight: 34)
-                    .padding(.horizontal, 3)
-                    .background(MacBarTuckTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                    .foregroundStyle(Color.black.opacity(0.78))
+                    .frame(width: Self.retuckButtonWidth, height: 34)
+                    .background(MacBarTuckTheme.retuckAction, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                    }
                 }
                 .buttonStyle(.plain)
                 .help(language.text("panel.retuck"))
-                .accessibilityLabel(language.text("panel.retuck"))
+                .accessibilityLabel(language.text("panel.retuck.count", store.temporarilyVisibleItems.count))
             }
         }
         .padding(.horizontal, 7)

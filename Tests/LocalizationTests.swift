@@ -78,6 +78,7 @@ private enum LocalizationTests {
             "items.visibility.temporary",
             "items.retuck_temporary",
             "panel.retuck",
+            "panel.retuck.count",
             "panel.temporary.help",
             "preferences.hover.help",
             "store.activation.retuck_progress"
@@ -105,6 +106,12 @@ private enum LocalizationTests {
         try expect(AppLanguageController.text("items.footer.count", language: .english,
                                               rootBundle: resourceBundle, arguments: [3]) == "3 Menu Items",
                    "The runtime localizer must format localized values.")
+        try expect(AppLanguageController.text("panel.retuck.count", language: .simplifiedChinese,
+                                              rootBundle: resourceBundle, arguments: [1]) == "重新收纳 1 项",
+                   "The Chinese tray action must explain what the temporary-item count means.")
+        try expect(AppLanguageController.text("panel.retuck.count", language: .english,
+                                              rootBundle: resourceBundle, arguments: [1]) == "Retuck: 1",
+                   "The English tray action must explain what the temporary-item count means.")
 
         let englishLanguage = AppLanguageController(
             defaults: UserDefaults(suiteName: "\(domain).display")!,

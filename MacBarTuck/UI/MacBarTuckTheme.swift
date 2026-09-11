@@ -13,6 +13,7 @@ enum MacBarTuckTheme {
     static let accent = Color(red: 0.34, green: 0.68, blue: 0.73)
     static let accentStrong = accent
     static let success = Color(red: 0.35, green: 0.84, blue: 0.59)
+    static let retuckAction = Color(red: 0.98, green: 0.68, blue: 0.22)
     static let warning = Color(red: 1.00, green: 0.43, blue: 0.38)
 }
 

@@ -120,6 +120,7 @@
 "panel.empty" = "没有已收起的项目";
 "panel.not_hidden" = "尚未成功收起";
 "panel.retuck" = "重新收纳";
+"panel.retuck.count" = "重新收纳 %d 项";
 "panel.temporary.help" = "此项目已临时显示在菜单栏；使用完后可统一重新收纳";
 "preview.safe" = "安全预览";
 "preview.no_status_item" = "不创建菜单栏项目";
