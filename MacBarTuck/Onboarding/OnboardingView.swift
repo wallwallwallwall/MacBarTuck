@@ -7,6 +7,7 @@ struct OnboardingView: View {
 
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var language: AppLanguageController
     @State private var step: Step
     @State private var hideSelectedIcons: Bool
     @State private var previewLoginEnabled = false
@@ -22,12 +23,12 @@ struct OnboardingView: View {
 
     private enum Step: Int, CaseIterable {
         case welcome, permissions, customize, ready
-        var title: String {
+        func title(_ language: AppLanguageController) -> String {
             switch self {
-            case .welcome: "欢迎"
-            case .permissions: "系统权限"
-            case .customize: "偏好设置"
-            case .ready: "完成"
+            case .welcome: language.text("onboarding.step.welcome")
+            case .permissions: language.text("onboarding.step.permissions")
+            case .customize: language.text("onboarding.step.preferences")
+            case .ready: language.text("onboarding.step.ready")
             }
         }
         static var previewSelection: Step {
@@ -49,8 +50,19 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(step.title).fontWeight(.medium)
+                Text(step.title(language)).fontWeight(.medium)
                 Spacer()
+                Picker(language.text("preferences.language.label"), selection: Binding(
+                    get: { language.selectedLanguage },
+                    set: { language.setLanguage($0) }
+                )) {
+                    ForEach(AppLanguage.allCases) { option in
+                        Text(option.switchLabel).tag(option)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 150)
                 ProgressView(value: Double(step.rawValue + 1), total: 4).frame(width: 110)
                 Text("\(step.rawValue + 1) / 4").foregroundStyle(.secondary).font(.caption)
             }
@@ -64,10 +76,10 @@ struct OnboardingView: View {
             Divider()
             HStack {
                 if step != .welcome {
-                    Button("上一步") { move(-1) }
+                    Button(language.text("onboarding.previous")) { move(-1) }
                 }
                 Spacer()
-                Button(step == .ready ? "完成" : "继续") {
+                Button(step == .ready ? language.text("onboarding.finish") : language.text("onboarding.continue")) {
                     if step == .ready { onComplete(hideSelectedIcons) }
                     else { move(1) }
                 }
@@ -100,30 +112,30 @@ struct OnboardingView: View {
         case .welcome:
             VStack(spacing: 20) {
                 Image(nsImage: NSApp.applicationIconImage).resizable().scaledToFit().frame(width: 80, height: 80)
-                Text("欢迎使用 MacBarTuck").font(.system(size: 22, weight: .medium))
+                Text(language.text("onboarding.welcome.title")).font(.system(size: 22, weight: .medium))
             }
         case .permissions:
             VStack(alignment: .leading, spacing: 24) {
-                Text("系统权限").font(.system(size: 20, weight: .medium))
+                Text(language.text("permissions.section")).font(.system(size: 20, weight: .medium))
                 VStack(spacing: 18) {
-                    permissionRow("辅助功能", symbol: "accessibility", granted: accessibilityGranted,
+                    permissionRow(language.text("permissions.accessibility"), symbol: "accessibility", granted: accessibilityGranted,
                                   action: permissions.requestAccessibility)
                     Divider()
-                    permissionRow("屏幕录制", symbol: "rectangle.inset.filled.and.person.filled", granted: recordingGranted,
+                    permissionRow(language.text("permissions.screen_recording"), symbol: "rectangle.inset.filled.and.person.filled", granted: recordingGranted,
                                   action: permissions.requestScreenRecording)
                 }
             }.frame(maxWidth: 470)
         case .customize:
             VStack(alignment: .leading, spacing: 26) {
-                Text("偏好设置").font(.system(size: 20, weight: .medium))
-                Toggle("登录时打开 MacBarTuck", isOn: Binding(
+                Text(language.text("onboarding.step.preferences")).font(.system(size: 20, weight: .medium))
+                Toggle(language.text("preferences.login"), isOn: Binding(
                     get: { store.isUIPreviewMode ? previewLoginEnabled : launchAtLogin.isEnabled },
                     set: { value in
                         if store.isUIPreviewMode { previewLoginEnabled = value }
                         else { launchAtLogin.setEnabled(value) }
                     }
                 ))
-                Toggle("启用菜单项收纳", isOn: $hideSelectedIcons)
+                Toggle(language.text("onboarding.enable_collection"), isOn: $hideSelectedIcons)
                 if let error = launchAtLogin.errorMessage {
                     Text(error).foregroundStyle(.red).font(.caption)
                 }
@@ -133,11 +145,15 @@ struct OnboardingView: View {
             VStack(spacing: 24) {
                 Image(systemName: accessibilityGranted && recordingGranted ? "checkmark.circle" : "clock")
                     .font(.system(size: 36)).foregroundStyle(.secondary)
-                Text(accessibilityGranted && recordingGranted ? "设置完成" : "设置已保存")
+                Text(accessibilityGranted && recordingGranted
+                     ? language.text("onboarding.setup_complete")
+                     : language.text("onboarding.setup_saved"))
                     .font(.system(size: 22, weight: .medium))
                 VStack(spacing: 14) {
-                    LabeledContent("辅助功能", value: accessibilityGranted ? "已允许" : "未允许")
-                    LabeledContent("屏幕录制", value: recordingGranted ? "已允许" : "未允许")
+                    LabeledContent(language.text("permissions.accessibility"),
+                                   value: accessibilityGranted ? language.text("onboarding.allowed") : language.text("onboarding.not_allowed"))
+                    LabeledContent(language.text("permissions.screen_recording"),
+                                   value: recordingGranted ? language.text("onboarding.allowed") : language.text("onboarding.not_allowed"))
                 }.foregroundStyle(.secondary).frame(width: 280)
             }
         }
@@ -150,9 +166,10 @@ struct OnboardingView: View {
             Text(title)
             Spacer()
             if granted {
-                Label("已允许", systemImage: "checkmark").foregroundStyle(.secondary)
+                Label(language.text("onboarding.allowed"), systemImage: "checkmark").foregroundStyle(.secondary)
             } else {
-                Button("打开设置", action: action).accessibilityLabel("\(title)设置")
+                Button(language.text("onboarding.open_settings"), action: action)
+                    .accessibilityLabel(language.text("onboarding.open_settings.label", title))
             }
         }
     }

@@ -21,6 +21,7 @@ enum DisplaySnapshotProvider {
             return DisplaySnapshot(
                 id: displayID,
                 name: screen.localizedName,
+                isBuiltIn: CGDisplayIsBuiltin(displayID) != 0,
                 isMain: displayID == CGMainDisplayID(),
                 frame: CGDisplayBounds(displayID),
                 pixelSize: CGSize(

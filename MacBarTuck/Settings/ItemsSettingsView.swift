@@ -4,6 +4,7 @@ struct ItemsSettingsView: View {
     @ObservedObject var store: MenuBarItemStore
     var openPermissions: () -> Void = {}
     @State private var query = ""
+    @EnvironmentObject private var language: AppLanguageController
 
     private var filteredItems: [MenuBarItem] {
         let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -11,7 +12,7 @@ struct ItemsSettingsView: View {
         return store.items.filter {
             $0.title.localizedCaseInsensitiveContains(value) ||
             $0.ownerName.localizedCaseInsensitiveContains(value) ||
-            $0.displayTitle.localizedCaseInsensitiveContains(value)
+            $0.displayTitle(for: language.selectedLanguage).localizedCaseInsensitiveContains(value)
         }
     }
 
@@ -20,67 +21,68 @@ struct ItemsSettingsView: View {
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("搜索菜单项", text: $query).textFieldStyle(.plain)
+                    TextField(language.text("items.search"), text: $query).textFieldStyle(.plain)
                     Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
                         .opacity(query.isEmpty ? 0 : 1).disabled(query.isEmpty)
-                        .help("清除搜索").accessibilityLabel("清除搜索")
+                        .help(language.text("items.search.clear")).accessibilityLabel(language.text("items.search.clear"))
                 }
                 .padding(.horizontal, 8).frame(width: 260, height: 28)
                 .background(MacBarTuckTheme.deepSurface, in: RoundedRectangle(cornerRadius: 5))
                 Spacer()
                 Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless).frame(width: 28, height: 28)
-                    .help("重新扫描").accessibilityLabel("重新扫描")
+                    .help(language.text("items.rescan")).accessibilityLabel(language.text("items.rescan"))
                 Menu {
-                    Button("全部设为自动") { store.resetRulesToAutomatic() }
+                    Button(language.text("items.all_automatic")) { store.resetRulesToAutomatic() }
                         .disabled(store.items.isEmpty)
-                    Button("全部显示") { store.setLayoutManagementEnabled(false) }
+                    Button(language.text("items.show_all")) { store.setLayoutManagementEnabled(false) }
                         .disabled(!store.layoutManagementEnabled)
                 } label: { Image(systemName: "ellipsis.circle") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                .frame(width: 28, height: 28).help("更多操作").accessibilityLabel("更多操作")
+                .frame(width: 28, height: 28)
+                .help(language.text("items.more")).accessibilityLabel(language.text("items.more"))
             }
             .padding(.horizontal, 20).frame(height: 52)
 
             if store.requiresScreenRecording {
-                emptyState("需要屏幕录制权限", symbol: "lock.shield") {
-                    Button("查看权限", action: openPermissions)
+                emptyState(language.text("items.recording_required"), symbol: "lock.shield") {
+                    Button(language.text("items.view_permissions"), action: openPermissions)
                 }
             } else if filteredItems.isEmpty {
-                emptyState(query.isEmpty ? "暂无菜单项" : "没有匹配的菜单项", symbol: "menubar.rectangle") {
-                    if !query.isEmpty { Button("清除搜索") { query = "" } }
+                emptyState(query.isEmpty ? language.text("items.empty") : language.text("items.no_matches"), symbol: "menubar.rectangle") {
+                    if !query.isEmpty { Button(language.text("items.search.clear")) { query = "" } }
                 }
             } else {
                 Table(filteredItems) {
-                    TableColumn("菜单项") { item in
+                    TableColumn(language.text("items.column.item")) { item in
                         HStack(spacing: 10) {
                             MenuItemIconView(item: item, size: 20).frame(width: 28)
-                            Text(item.displayTitle).lineLimit(1)
+                            Text(item.displayTitle(for: language.selectedLanguage)).lineLimit(1)
                             if item.windowID != nil && item.iconImage == nil {
                                 Image(systemName: "clock").foregroundStyle(.secondary)
-                                    .help("图标尚未读取")
+                                    .help(language.text("items.icon.pending"))
                             }
                         }
                         .frame(height: 34)
-                        .help(item.tooltip)
+                        .help(item.tooltip(for: language.selectedLanguage))
                     }
-                    TableColumn("显示方式") { item in
+                    TableColumn(language.text("items.column.mode")) { item in
                         if item.isAlwaysVisibleSystemItem {
-                            Label("系统保留", systemImage: "lock")
-                                .foregroundStyle(.secondary).help("此项目保持显示")
+                            Label(language.text("items.system_reserved"), systemImage: "lock")
+                                .foregroundStyle(.secondary).help(language.text("items.system_reserved.help"))
                         } else {
-                            Picker("\(item.displayTitle)的显示方式", selection: Binding(
+                            Picker(language.text("items.mode.label", item.displayTitle(for: language.selectedLanguage)), selection: Binding(
                                 get: { item.rule }, set: { store.setRule($0, for: item) }
                             )) {
-                                Text("自动").tag(MenuItemRule.automatic)
-                                Text("始终显示").tag(MenuItemRule.alwaysVisible)
-                                Text("收起").tag(MenuItemRule.alwaysHidden)
+                                Text(language.text("items.mode.automatic")).tag(MenuItemRule.automatic)
+                                Text(language.text("items.mode.visible")).tag(MenuItemRule.alwaysVisible)
+                                Text(language.text("items.mode.hidden")).tag(MenuItemRule.alwaysHidden)
                             }
                             .labelsHidden().pickerStyle(.menu).frame(width: 128)
                         }
                     }.width(150)
-                    TableColumn("状态") { item in
+                    TableColumn(language.text("items.column.status")) { item in
                         Text(store.visibilityDescription(for: item))
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                     }.width(104)
@@ -89,7 +91,11 @@ struct ItemsSettingsView: View {
             }
             Divider()
             HStack {
-                Text(store.isUIPreviewMode ? "界面预览 · \(filteredItems.count) 个示例" : (store.requiresScreenRecording ? "等待授权" : "\(filteredItems.count) 个菜单项"))
+                Text(store.isUIPreviewMode
+                     ? language.text("items.footer.preview", filteredItems.count)
+                     : (store.requiresScreenRecording
+                        ? language.text("items.footer.waiting")
+                        : language.text("items.footer.count", filteredItems.count)))
                 Spacer()
                 if let message = store.layoutOperationMessage {
                     Text(message).lineLimit(1).help(message)

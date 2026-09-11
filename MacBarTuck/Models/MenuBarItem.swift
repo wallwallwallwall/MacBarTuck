@@ -103,32 +103,50 @@ final class MenuBarItem: Identifiable {
         self.isProtectedSystemItem = isProtectedSystemItem
     }
 
-    var displayTitle: String {
-        if let resolvedTitle { return resolvedTitle }
-        return switch title.lowercased() {
-        case "menu bar item": "菜单栏项目"
-        case "screen recording": "屏幕录制"
-        case "audio and video controls": "音频与视频控制"
-        case "control center item": "控制中心项目"
-        case "control center": "控制中心"
-        case "battery": "电池"
-        case "clock": "时钟"
-        case "bluetooth": "蓝牙"
+    var displayTitle: String { displayTitle(for: AppLanguageController.shared.selectedLanguage) }
+
+    func displayTitle(for language: AppLanguage) -> String {
+        let value = resolvedTitle ?? title
+        let normalized = value.lowercased()
+        if normalized.hasPrefix("unidentified item "),
+           let index = Int(normalized.dropFirst("unidentified item ".count)) {
+            return localized("item.unidentified", language: language, index)
+        }
+        return switch normalized {
+        case "menu bar item": localized("item.menu_bar_item", language: language)
+        case "screen recording": localized("item.screen_recording", language: language)
+        case "audio and video controls": localized("item.audio_video", language: language)
+        case "control center item": localized("item.control_center_item", language: language)
+        case "control center": localized("item.control_center", language: language)
+        case "battery": localized("item.battery", language: language)
+        case "clock": localized("item.clock", language: language)
+        case "bluetooth": localized("item.bluetooth", language: language)
+        case "input source": localized("item.input_source", language: language)
+        case "window layout": localized("preview.item.window", language: language)
+        case "focus timer": localized("preview.item.focus", language: language)
+        case "clipboard": localized("preview.item.clipboard", language: language)
+        case "sound": localized("preview.item.audio", language: language)
         case "wifi": "Wi-Fi"
-        default: title
+        default: value
         }
     }
 
-    var displayOwnerName: String {
+    var displayOwnerName: String { displayOwnerName(for: AppLanguageController.shared.selectedLanguage) }
+
+    func displayOwnerName(for language: AppLanguage) -> String {
         switch ownerName.lowercased() {
-        case "system menu bar": "系统菜单栏"
-        case "control center": "控制中心"
+        case "system menu bar": localized("item.owner.system", language: language)
+        case "control center": localized("item.control_center", language: language)
         default: ownerName
         }
     }
 
-    var tooltip: String {
-        displayTitle.isEmpty ? displayOwnerName : "\(displayOwnerName) · \(displayTitle)"
+    var tooltip: String { tooltip(for: AppLanguageController.shared.selectedLanguage) }
+
+    func tooltip(for language: AppLanguage) -> String {
+        let title = displayTitle(for: language)
+        let owner = displayOwnerName(for: language)
+        return title.isEmpty ? owner : "\(owner) · \(title)"
     }
     /// Preserve colors in captured glyphs, including system privacy badges.
     var usesTemplateIcon: Bool {
@@ -170,9 +188,9 @@ final class MenuBarItem: Identifiable {
         return "exclamationmark.triangle"
     }
     var activationStatusHelp: String {
-        if supportsPressAction { return "通过辅助功能执行原菜单动作" }
-        if windowID != nil { return "通过 WindowServer 快速激活" }
-        return "当前无法通过辅助功能激活"
+        if supportsPressAction { return localized("item.activation.ax", language: AppLanguageController.shared.selectedLanguage) }
+        if windowID != nil { return localized("item.activation.window_server", language: AppLanguageController.shared.selectedLanguage) }
+        return localized("item.activation.unavailable", language: AppLanguageController.shared.selectedLanguage)
     }
     var hasUsableDisplayIcon: Bool {
         if windowID != nil { return iconImage != nil }
@@ -189,5 +207,9 @@ final class MenuBarItem: Identifiable {
         if value.contains("clock") { return "clock.fill" }
         if value.contains("amphetamine") { return "bolt.fill" }
         return "circle.grid.2x2.fill"
+    }
+
+    private func localized(_ key: String, language: AppLanguage, _ arguments: CVarArg...) -> String {
+        AppLanguageController.text(key, language: language, arguments: arguments)
     }
 }

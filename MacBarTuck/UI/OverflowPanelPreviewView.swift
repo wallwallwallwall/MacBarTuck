@@ -3,6 +3,7 @@ import SwiftUI
 struct OverflowPanelPreviewView: View {
     @ObservedObject var store: MenuBarItemStore
     @StateObject private var presentation = OverflowPanelPresentationState(isPresented: true)
+    @EnvironmentObject private var language: AppLanguageController
 
     private var panelWidth: CGFloat {
         max(CGFloat(store.overflowItems.count) * OverflowPanelView.itemSlotWidth + 58, 154)
@@ -20,11 +21,11 @@ struct OverflowPanelPreviewView: View {
                     Circle()
                         .fill(MacBarTuckTheme.success)
                         .frame(width: 7, height: 7)
-                    Text("安全预览")
+                    Text(language.text("preview.safe"))
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                         .foregroundStyle(MacBarTuckTheme.secondaryText)
                     Spacer()
-                    Label("不创建菜单栏项目", systemImage: "shield.checkered")
+                    Label(language.text("preview.no_status_item"), systemImage: "shield.checkered")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(MacBarTuckTheme.success)
                 }
@@ -35,7 +36,7 @@ struct OverflowPanelPreviewView: View {
                 Spacer()
 
                 VStack(spacing: 11) {
-                    Text("托盘会在当前操作的屏幕、菜单栏下方展开")
+                    Text(language.text("preview.panel_location"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(MacBarTuckTheme.secondaryText)
 

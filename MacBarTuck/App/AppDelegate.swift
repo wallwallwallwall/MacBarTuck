@@ -1,18 +1,21 @@
 import AppKit
 import ApplicationServices
+import Combine
 import OSLog
 import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let store = MenuBarItemStore()
-    let dockVisibility = DockVisibilityController()
+    let language = AppLanguageController.shared
+    lazy var store = MenuBarItemStore(language: language)
+    lazy var dockVisibility = DockVisibilityController(language: language)
     private var permissions: PermissionManager { store.permissions }
     private let preferences = PreferencesStore()
     private var statusBarController: StatusBarController?
     private var settingsWindowController: NSWindowController?
     private var onboardingWindowController: NSWindowController?
     private var panelPreviewWindowController: NSWindowController?
+    private var languageObserver: AnyCancellable?
     private var isFinishingTermination = false
     private var didReplyToTermination = false
     private var restartScheduled = false
@@ -26,10 +29,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return "" }
             self.permissions.refresh()
             return self.permissions.statusDetail
-        }
+        },
+        language: language
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        languageObserver = language.$selectedLanguage
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateLocalizedChrome() }
         Logger(subsystem: "com.bartuck.app", category: "startup").info("Accessibility trusted: \(AXIsProcessTrusted(), privacy: .public)")
         let arguments = ProcessInfo.processInfo.arguments
         if !store.isUIPreviewMode {
@@ -52,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        statusBarController = StatusBarController(store: store, menuProvider: { [weak self] in
+        statusBarController = StatusBarController(store: store, language: language, menuProvider: { [weak self] in
             self?.menus.makeStatusMenu() ?? NSMenu()
         })
         dockVisibility.applyInitialPolicy()
@@ -82,16 +90,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = store.isUIPreviewMode ? "MacBarTuck · 界面预览" : "MacBarTuck"
+            window.title = store.isUIPreviewMode ? language.text("window.settings.preview") : "MacBarTuck"
             window.titlebarAppearsTransparent = false
             window.titleVisibility = .visible
             window.isMovableByWindowBackground = true
             window.appearance = NSAppearance(named: .darkAqua)
             window.contentMinSize = .init(width: 760, height: 560)
-            window.contentView = NSHostingView(rootView: SettingsView(store: store, dockVisibility: dockVisibility,
-                restartApplication: { [weak self] in self?.restartApplication() }, showOnboarding: { [weak self] in
-                self?.showOnboarding()
-            }))
+            window.contentView = NSHostingView(rootView: AppLocalizedRoot(language: language) {
+                SettingsView(store: self.store, dockVisibility: self.dockVisibility,
+                    restartApplication: { [weak self] in self?.restartApplication() }, showOnboarding: { [weak self] in
+                    self?.showOnboarding()
+                })
+            })
             window.center()
             let controller = NSWindowController(window: window)
             settingsWindowController = controller
@@ -124,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             restartScheduled = true
             NSApp.terminate(nil)
         } catch {
-            store.lastActivationError = "无法重新启动 MacBarTuck：\(error.localizedDescription)"
+            store.lastActivationError = language.text("error.restart", error.localizedDescription)
         }
     }
 
@@ -138,26 +148,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = store.isUIPreviewMode ? "设置 MacBarTuck · 界面预览" : "设置 MacBarTuck"
+            window.title = store.isUIPreviewMode
+                ? language.text("window.onboarding.preview")
+                : language.text("window.onboarding")
             window.titleVisibility = .visible
             window.titlebarAppearsTransparent = false
             window.isMovableByWindowBackground = true
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: .darkAqua)
             window.contentMinSize = .init(width: 680, height: 500)
-            window.contentView = NSHostingView(rootView: OnboardingView(
-                store: store,
-                permissions: permissions,
-                initialHideSelectedIcons: preferences.hasCompletedOnboarding ? store.layoutManagementEnabled : true,
-                onComplete: { [weak self] hideSelectedIcons in
-                    guard let self else { return }
-                    if self.store.isUIPreviewMode {
-                        self.onboardingWindowController?.close()
-                        return
+            window.contentView = NSHostingView(rootView: AppLocalizedRoot(language: language) {
+                OnboardingView(
+                    store: self.store,
+                    permissions: self.permissions,
+                    initialHideSelectedIcons: self.preferences.hasCompletedOnboarding ? self.store.layoutManagementEnabled : true,
+                    onComplete: { [weak self] hideSelectedIcons in
+                        guard let self else { return }
+                        if self.store.isUIPreviewMode {
+                            self.onboardingWindowController?.close()
+                            return
+                        }
+                        self.completeOnboarding(hideSelectedIcons: hideSelectedIcons)
                     }
-                    self.completeOnboarding(hideSelectedIcons: hideSelectedIcons)
-                }
-            ))
+                )
+            })
             window.center()
             let controller = NSWindowController(window: window)
             onboardingWindowController = controller
@@ -176,13 +190,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "MacBarTuck 托盘预览"
+            window.title = language.text("window.panel.preview")
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.isMovableByWindowBackground = true
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: .darkAqua)
-            window.contentView = NSHostingView(rootView: OverflowPanelPreviewView(store: store))
+            window.contentView = NSHostingView(rootView: AppLocalizedRoot(language: language) {
+                OverflowPanelPreviewView(store: self.store)
+            })
             window.center()
             let controller = NSWindowController(window: window)
             panelPreviewWindowController = controller
@@ -197,6 +213,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.setLayoutManagementEnabled(hideSelectedIcons)
         onboardingWindowController?.close()
         onboardingWindowController = nil
+    }
+
+    private func updateLocalizedChrome() {
+        settingsWindowController?.window?.title = store.isUIPreviewMode
+            ? language.text("window.settings.preview")
+            : "MacBarTuck"
+        onboardingWindowController?.window?.title = store.isUIPreviewMode
+            ? language.text("window.onboarding.preview")
+            : language.text("window.onboarding")
+        panelPreviewWindowController?.window?.title = language.text("window.panel.preview")
+        statusBarController?.updateLocalization()
+        store.objectWillChange.send()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

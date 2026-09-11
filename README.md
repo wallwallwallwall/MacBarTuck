@@ -1,6 +1,6 @@
 # MacBarTuck
 
-MacBarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Apple Silicon Mac。它会根据菜单栏安全宽度自动收纳可能被刘海遮挡的项目，也允许为每个项目设置“自动、常显、收纳”三态规则。
+MacBarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Apple Silicon Mac。它会根据菜单栏安全宽度自动收纳可能被刘海遮挡的项目，也允许为每个项目设置“自动、常显、收纳”三态规则。界面支持中文和英文即时切换。
 
 ![MacBarTuck 菜单项](docs/screenshots/items.png)
 
@@ -14,6 +14,10 @@ MacBarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 A
 | --- | --- |
 | ![首次引导](docs/screenshots/onboarding.png) | ![收纳托盘](docs/screenshots/overflow-panel.png) |
 
+| English menu items | English general settings |
+| --- | --- |
+| ![English menu items](docs/screenshots/items-en.png) | ![English general settings](docs/screenshots/preferences-en.png) |
+
 ## 功能
 
 - 自动计算当前最受限刘海屏的可用菜单栏宽度。
@@ -21,6 +25,7 @@ MacBarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 A
 - 点击托盘中的图标，继续使用原应用菜单或弹窗。
 - 支持主屏和扩展屏；托盘会在当前操作的屏幕展开。
 - 支持菜单栏悬停展开、登录启动、恢复布局和安全重置。
+- 支持中文和英文即时切换，并同步更新窗口、状态栏菜单、程序坞菜单和系统授权说明。
 - 屏幕录制、规则计算和图标激活均在本机完成，无账号、无遥测。
 
 ## 系统要求
@@ -32,7 +37,7 @@ MacBarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 A
 
 ## 安装
 
-1. 打开 `MacBarTuck-0.1.8.dmg`。
+1. 打开 `MacBarTuck-0.1.9.dmg`。
 2. 将 `MacBarTuck.app` 拖入 `Applications`。
 3. 首次打开时按引导授予辅助功能和屏幕录制权限。
 4. 若 macOS 提示应用来自未识别开发者，请在 Finder 中右键应用并选择“打开”。当前开源构建使用临时签名，尚未经过 Apple 公证。
@@ -47,7 +52,7 @@ MacBarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 A
 - 在“通用 → 应用”设置程序坞图标是否显示；选择会保留到下次启动。隐藏窗口、隐藏程序坞图标均不会退出进程。
 - 菜单项：搜索项目，用“显示方式”菜单选择自动、始终显示或收起。
 - 顶部“启用收纳”开关控制是否移动菜单项。“全部显示”会暂停收纳并恢复原图标。
-- 通用：设置自动避让、悬停展开和登录启动；重置设置会先请求确认。
+- 通用：设置自动避让、悬停展开、登录启动和界面语言；重置设置会先请求确认。
 - 权限与显示器：查看授权状态及当前连接的显示器。
 
 macOS 的菜单栏项目顺序是全局状态，不支持为每块屏幕保留完全独立的排列。MacBarTuck 因此使用已连接刘海屏中最小的安全宽度计算自动规则，同时把托盘显示在用户当前操作的屏幕。
@@ -73,9 +78,9 @@ xcodebuild \
 ./scripts/run-unit-tests.sh
 ```
 
-当前基础测试集包含 142 项规则、菜单身份、权限及应用入口检查。`bash scripts/run-refresh-tests.sh` 另执行 10 项 Store 调度检查及诊断日志轮换检查。系统授权及激活策略测试主要使用替身，另覆盖实际 AppKit 重复设置策略的返回行为；不修改本机授权。这些测试不能代替真实收纳和点击验收。
+当前基础测试集包含 345 项规则、菜单身份、权限、应用入口及双语资源检查。`bash scripts/run-refresh-tests.sh` 另执行 10 项 Store 调度检查及诊断日志轮换检查。系统授权及激活策略测试主要使用替身，另覆盖实际 AppKit 重复设置策略的返回行为；不修改本机授权。这些测试不能代替真实收纳和点击验收。
 
-构建 Debug 应用后运行 8 个安全界面冒烟场景：
+构建 Debug 应用后运行中文、英文各 8 个安全界面冒烟场景：
 
 ```bash
 ./scripts/run-ui-smoke-tests.sh
@@ -87,7 +92,7 @@ xcodebuild \
 ./scripts/create-dmg.sh
 ```
 
-产物位于 `dist/MacBarTuck-0.1.8.dmg`，并附带 SHA-256 文件。
+产物位于 `dist/MacBarTuck-0.1.9.dmg`，并附带 SHA-256 文件。
 
 默认仍为临时签名。已配置 Developer ID 的发布者可以通过 `MACBARTUCK_SIGNING_IDENTITY` 指定已有身份；脚本仍兼容旧的 `BARTUCK_SIGNING_IDENTITY`。它不会创建证书、修改信任设置或执行公证。详见 [权限状态与发布签名](docs/permissions.md)。
 
@@ -100,6 +105,8 @@ xcodebuild \
 0.1.7 将固定的系统时钟设为保留项，避免阻塞其他项目的移动；列表新增实际状态，托盘仅展示已确认隐藏的项目。“收起”是期望规则，不代表操作已成功。双屏副本有一份仍显示时会标为“部分屏幕可见”，窗口失效时标为“待确认”。
 
 0.1.8 将产品名称更新为 MacBarTuck。Bundle ID、用户设置、诊断日志目录和状态栏定位标识保持不变，用于兼容已安装的 BarTuck 版本。
+
+0.1.9 增加中文、英文即时切换，覆盖设置页、首次引导、收纳托盘、状态栏菜单、程序坞菜单和屏幕录制授权说明。语言选择会保留到下次启动，切换过程不会触发菜单栏扫描或布局移动。
 
 录屏、麦克风、摄像头等 macOS 隐私指示器会被强制保持可见，不能设置为收纳。
 

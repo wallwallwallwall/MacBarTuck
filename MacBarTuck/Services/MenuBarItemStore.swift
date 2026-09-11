@@ -6,6 +6,7 @@ import OSLog
 @MainActor
 final class MenuBarItemStore: ObservableObject {
     let permissions: PermissionManager
+    let language: AppLanguageController
     @Published private(set) var items: [MenuBarItem] = []
     @Published var lastActivationError: String?
     @Published private(set) var activatingItemID: String?
@@ -72,10 +73,12 @@ final class MenuBarItemStore: ObservableObject {
     var onLayoutOperationStateChanged: ((Bool) -> Void)?
 
     init(permissions: PermissionManager? = nil, preferences: PreferencesStore = PreferencesStore(),
+         language: AppLanguageController = .shared,
          scanner: MenuBarScanner = MenuBarScanner(),
          captureOverride: (([MenuBarItem]) async -> [String: NSImage])? = nil,
          visibilityOverride: ((MenuBarItem) -> Bool)? = nil, hideOverride: HideHandler? = nil) {
-        self.permissions = permissions ?? PermissionManager()
+        self.language = language
+        self.permissions = permissions ?? PermissionManager(language: language)
         self.preferences = preferences
         self.scanner = scanner
         self.captureOverride = captureOverride
@@ -146,13 +149,15 @@ final class MenuBarItemStore: ObservableObject {
 
     func visibilityDescription(for item: MenuBarItem) -> String {
         switch item.visibility {
-        case .hidden: return "已收起"
-        case .partial: return "部分屏幕可见"
-        case .unknown: return "待确认"
+        case .hidden: return language.text("items.visibility.hidden")
+        case .partial: return language.text("items.visibility.partial")
+        case .unknown: return language.text("items.visibility.unknown")
         case .visible:
-            if !item.isSelected { return "显示中" }
-            if failedLayoutIDs.contains(item.id) { return "收起失败" }
-            return layoutManagementEnabled ? "待收起" : "尚未启用"
+            if !item.isSelected { return language.text("items.visibility.visible") }
+            if failedLayoutIDs.contains(item.id) { return language.text("items.visibility.failed") }
+            return layoutManagementEnabled
+                ? language.text("items.visibility.pending")
+                : language.text("items.visibility.disabled")
         }
     }
 
@@ -236,7 +241,7 @@ final class MenuBarItemStore: ObservableObject {
             items = []
             displays = DisplaySnapshotProvider.snapshots()
             isReadyForManagedLayout = false
-            iconCaptureMessage = "菜单栏读取权限未就绪"
+            iconCaptureMessage = language.text("store.capture.permission")
             onLayoutStateChanged?()
             return
         }
@@ -363,10 +368,13 @@ final class MenuBarItemStore: ObservableObject {
         if selected {
             applyLayout()
         } else if let controlItemFrame {
-            layoutOperationMessage = "正在恢复菜单栏项目…"
+            layoutOperationMessage = language.text("store.restore.progress")
             onLayoutOperationStateChanged?(false)
             layoutManager.restore(previouslySelected, relativeTo: controlItemFrame) { [weak self] count in
-                self?.layoutOperationMessage = count > 0 ? "已恢复 \(count) 个菜单栏项目。" : "所有菜单栏项目均已显示。"
+                guard let self else { return }
+                self.layoutOperationMessage = count > 0
+                    ? self.language.text("store.restore.count", count)
+                    : self.language.text("store.restore.all_visible")
             }
         }
         onLayoutStateChanged?()
@@ -478,14 +486,16 @@ final class MenuBarItemStore: ObservableObject {
         cancelLayoutWork()
         isRestoringLayout = true
         onLayoutOperationStateChanged?(false)
-        layoutOperationMessage = "正在恢复应常显的项目…"
+        layoutOperationMessage = language.text("store.restore.visible_items")
         let generation = layoutStartGeneration
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self, self.layoutStartGeneration == generation else { return }
             self.layoutManager.restore(itemsToRestore, relativeTo: controlItemFrame) { [weak self] count in
                 guard let self, self.layoutStartGeneration == generation else { return }
                 self.isRestoringLayout = false
-                self.layoutOperationMessage = count == itemsToRestore.count ? "已恢复 \(count) 个菜单栏项目。" : "部分项目未能恢复，请查看日志。"
+                self.layoutOperationMessage = count == itemsToRestore.count
+                    ? self.language.text("store.restore.count", count)
+                    : self.language.text("store.restore.partial")
                 self.scheduleRefresh(after: 0.3, reason: "restore settled", source: .observation)
             }
         }
@@ -524,7 +534,7 @@ final class MenuBarItemStore: ObservableObject {
             let availableCount = self.items.filter { $0.iconImage != nil }.count
             self.iconCaptureMessage = self.items.isEmpty
                 ? nil
-                : "已载入 \(availableCount)/\(self.items.count) 个菜单栏图标。"
+                : self.language.text("store.capture.count", availableCount, self.items.count)
             self.isReadyForManagedLayout = self.selectedItems.allSatisfy(\.hasUsableDisplayIcon)
             DiagnosticLog.shared.record("capture.result", ["requested": candidates.count, "captured": images.count])
             self.objectWillChange.send()
@@ -550,12 +560,14 @@ final class MenuBarItemStore: ObservableObject {
         if isUIPreviewMode {
             layoutManagementEnabled = enabled
             for item in items { item.visibility = item.isSelected && enabled ? .hidden : .visible }
-            layoutOperationMessage = enabled ? "预览：菜单栏布局管理已开启。" : "预览：仅保留规则，不移动原图标。"
+            layoutOperationMessage = enabled
+                ? language.text("store.preview.layout_enabled")
+                : language.text("store.preview.layout_disabled")
             return
         }
         permissions.refresh()
         guard !enabled || permissions.isReady else {
-            layoutOperationMessage = "权限未生效，请查看“权限与显示器”。"
+            layoutOperationMessage = language.text("store.permission.inactive")
             return
         }
         layoutManager.isEnabled = enabled
@@ -591,7 +603,7 @@ final class MenuBarItemStore: ObservableObject {
 
     func applyLayout(automatic: Bool = false) {
         if isUIPreviewMode {
-            layoutOperationMessage = "预览：当前三态规则已应用。"
+            layoutOperationMessage = language.text("store.preview.rules_applied")
             return
         }
         guard layoutManagementEnabled, !selectedItems.isEmpty else { return }
@@ -599,11 +611,11 @@ final class MenuBarItemStore: ObservableObject {
         if automatic && automaticLayoutSuspended { return }
         permissions.refresh()
         guard permissions.isReady else {
-            layoutOperationMessage = "权限未就绪，未执行菜单栏移动。"
+            layoutOperationMessage = language.text("store.permission.not_ready")
             return
         }
         guard isReadyForManagedLayout else {
-            layoutOperationMessage = "正在等待所选图标准备完成，暂未应用布局。"
+            layoutOperationMessage = language.text("store.layout.waiting_icons")
             return
         }
         if isApplyingLayout {
@@ -621,7 +633,7 @@ final class MenuBarItemStore: ObservableObject {
         automaticLayoutWorkItem = nil
         if !automatic { automaticLayoutSuspended = false }
         isApplyingLayout = true
-        layoutOperationMessage = "正在应用收纳布局…"
+        layoutOperationMessage = language.text("store.layout.applying")
         onLayoutOperationStateChanged?(true)
         layoutStartGeneration += 1
         let startGeneration = layoutStartGeneration
@@ -651,11 +663,13 @@ final class MenuBarItemStore: ObservableObject {
                         self.items.first(where: { $0.id == plannedItem.id })?.visibility != .hidden
                     }
                     if remaining.isEmpty && count >= needed {
-                        self.layoutOperationMessage = count > 0 ? "收纳布局已更新，移动了 \(count) 个项目。" : "当前项目均已处于正确位置。"
+                        self.layoutOperationMessage = count > 0
+                            ? self.language.text("store.layout.updated", count)
+                            : self.language.text("store.layout.correct")
                     } else {
                         self.failedLayoutIDs.formUnion(remaining.map(\.id))
                         self.automaticLayoutSuspended = true
-                        self.layoutOperationMessage = "部分项目未能收起，已停止自动重试。可在通用页查看日志。"
+                        self.layoutOperationMessage = self.language.text("store.layout.partial")
                     }
                     DiagnosticLog.shared.record("layout.end", ["transaction": startGeneration, "moved": count,
                         "remaining": remaining.count, "paused": self.automaticLayoutSuspended ? 1 : 0])
@@ -702,7 +716,7 @@ final class MenuBarItemStore: ObservableObject {
 
     func restoreLayout(completion: @escaping () -> Void = {}) {
         if isUIPreviewMode {
-            layoutOperationMessage = "预览：原菜单栏图标已恢复显示。"
+            layoutOperationMessage = language.text("store.preview.restored")
             for item in items { item.visibility = .visible }
             completion()
             return
@@ -712,7 +726,7 @@ final class MenuBarItemStore: ObservableObject {
         isRestoringLayout = true
         onLayoutStateChanged?()
         guard let controlItemFrame else { isRestoringLayout = false; completion(); return }
-        layoutOperationMessage = "正在恢复菜单栏项目…"
+        layoutOperationMessage = language.text("store.restore.progress")
         onLayoutOperationStateChanged?(false)
         let generation = layoutStartGeneration
         let planned = selectedItems
@@ -722,7 +736,9 @@ final class MenuBarItemStore: ObservableObject {
                 guard let self, self.layoutStartGeneration == generation else { completion(); return }
                 self.isRestoringLayout = false
                 DiagnosticLog.shared.record("layout.restore", ["moved": count, "requested": planned.count])
-                self.layoutOperationMessage = count == planned.count ? "原图标已显示。" : "已展开菜单栏；部分位置未能恢复，请查看日志。"
+                self.layoutOperationMessage = count == planned.count
+                    ? self.language.text("store.restore.original")
+                    : self.language.text("store.restore.original_partial")
                 completion()
                 if !self.isTerminating { self.scheduleRefresh(after: 0.3, reason: "restore settled", source: .observation) }
             }
@@ -732,7 +748,7 @@ final class MenuBarItemStore: ObservableObject {
     func restoreAllAndDisable() {
         if isUIPreviewMode {
             layoutManagementEnabled = false
-            layoutOperationMessage = "预览：已完成安全重置。"
+            layoutOperationMessage = language.text("store.preview.reset")
             for item in items where !item.isAlwaysVisibleSystemItem {
                 item.rule = .automatic
                 item.isSelected = false
@@ -778,13 +794,13 @@ final class MenuBarItemStore: ObservableObject {
         let y = displayFrame.minY
 
         let samples: [(String, String, String, MenuItemRule, Bool, Bool, String)] = [
-            ("preview-window", "窗口布局", "WindowPilot", .automatic, true, false, "macwindow"),
-            ("preview-focus", "专注计时", "Focus Flow", .alwaysVisible, false, false, "timer"),
-            ("preview-clipboard", "剪贴板", "ClipStack", .automatic, true, false, "doc.on.clipboard"),
+            ("preview-window", "Window Layout", "WindowPilot", .automatic, true, false, "macwindow"),
+            ("preview-focus", "Focus Timer", "Focus Flow", .alwaysVisible, false, false, "timer"),
+            ("preview-clipboard", "Clipboard", "ClipStack", .automatic, true, false, "doc.on.clipboard"),
             ("preview-vpn", "VPN", "Shield Link", .alwaysHidden, true, false, "lock.shield"),
-            ("preview-wifi", "WiFi", "系统菜单栏", .automatic, false, true, "wifi"),
-            ("preview-audio", "声音", "系统菜单栏", .alwaysVisible, false, true, "speaker.wave.2"),
-            ("preview-recording", "Screen Recording", "系统菜单栏", .alwaysVisible, false, true, "record.circle")
+            ("preview-wifi", "WiFi", "System Menu Bar", .automatic, false, true, "wifi"),
+            ("preview-audio", "Sound", "System Menu Bar", .alwaysVisible, false, true, "speaker.wave.2"),
+            ("preview-recording", "Screen Recording", "System Menu Bar", .alwaysVisible, false, true, "record.circle")
         ]
 
         items = samples.enumerated().map { index, sample in
@@ -806,7 +822,7 @@ final class MenuBarItemStore: ObservableObject {
         layoutManagementEnabled = true
         automaticAvoidanceEnabled = true
         isReadyForManagedLayout = true
-        iconCaptureMessage = "安全预览 · 7 个菜单项"
+        iconCaptureMessage = language.text("store.preview.capture")
         layoutOperationMessage = nil
     }
 
@@ -826,12 +842,12 @@ final class MenuBarItemStore: ObservableObject {
 
     func activate(_ requestedItem: MenuBarItem, mouseButton: CGMouseButton = .left, retryCount: Int = 0) {
         guard !isApplyingLayout, !isRestoringLayout, !isTerminating else {
-            lastActivationError = "菜单栏正在调整，请稍后重试。"
+            lastActivationError = language.text("store.activation.busy")
             return
         }
         permissions.refresh()
         guard permissions.accessibilityGranted else {
-            lastActivationError = "请先授予辅助功能权限。"
+            lastActivationError = language.text("store.activation.permission")
             return
         }
         let logicalItem = items.first { $0.id == requestedItem.id } ?? requestedItem
@@ -859,7 +875,8 @@ final class MenuBarItemStore: ObservableObject {
             activator.activateMovedItem(item, mouseButton: .left) { [weak self] success in
                 guard let self else { return }
                 guard success else {
-                    self.retryActivation(item, mouseButton: .left, retryCount: retryCount, message: "无法激活 \(item.tooltip)。")
+                    self.retryActivation(item, mouseButton: .left, retryCount: retryCount,
+                                         message: self.language.text("store.activation.failed", item.tooltip(for: self.language.selectedLanguage)))
                     return
                 }
                 self.rehideAfterNextUserClick(item)
@@ -889,7 +906,8 @@ final class MenuBarItemStore: ObservableObject {
                 guard let self else { return }
                 self.layoutManager.restorePointerLocation(pointer)
                 guard success else {
-                    self.retryActivation(item, mouseButton: mouseButton, retryCount: retryCount, message: "无法打开 \(item.tooltip) 的右键菜单。")
+                    self.retryActivation(item, mouseButton: mouseButton, retryCount: retryCount,
+                                         message: self.language.text("store.activation.context_failed", item.tooltip(for: self.language.selectedLanguage)))
                     return
                 }
                 self.finishActivation()
@@ -913,7 +931,8 @@ final class MenuBarItemStore: ObservableObject {
         layoutManager.reveal(item, restoreCursorLocation: restoreCursorLocation) { [weak self] moved in
             guard let self else { return }
             guard moved else {
-                self.retryActivation(item, mouseButton: mouseButton, retryCount: retryCount, message: "无法临时显示 \(item.tooltip)。")
+                self.retryActivation(item, mouseButton: mouseButton, retryCount: retryCount,
+                                     message: self.language.text("store.activation.reveal_failed", item.tooltip(for: self.language.selectedLanguage)))
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
@@ -935,7 +954,8 @@ final class MenuBarItemStore: ObservableObject {
                     self.layoutManager.restorePointerLocation(restoreCursorLocation)
                     guard success else {
                         self.layoutManager.rehide(item, restoreCursorLocation: restoreCursorLocation)
-                        self.retryActivation(item, mouseButton: mouseButton, retryCount: retryCount, message: "无法激活 \(item.tooltip)。")
+                        self.retryActivation(item, mouseButton: mouseButton, retryCount: retryCount,
+                                             message: self.language.text("store.activation.failed", item.tooltip(for: self.language.selectedLanguage)))
                         return
                     }
                     self.rehideAfterNextUserClick(item)

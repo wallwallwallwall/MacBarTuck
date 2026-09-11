@@ -105,10 +105,11 @@ struct MenuItemIconView: View {
 
 extension MenuItemRule {
     var localizedTitle: String {
-        switch self {
-        case .automatic: "自动"
-        case .alwaysVisible: "常显"
-        case .alwaysHidden: "收纳"
+        let language = AppLanguageController.shared
+        return switch self {
+        case .automatic: language.text("items.mode.automatic")
+        case .alwaysVisible: language.text("items.mode.visible")
+        case .alwaysHidden: language.text("items.mode.hidden")
         }
     }
 

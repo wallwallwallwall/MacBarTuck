@@ -51,13 +51,21 @@ run_preview() {
     printf '%s: passed\n' "$name"
 }
 
-run_preview status 700 500 --ui-preview-tab=status
-run_preview items 700 500 --ui-preview-tab=items
-run_preview preferences 700 500 --ui-preview-tab=preferences
-run_preview onboarding-welcome 680 480 --ui-preview-onboarding
-run_preview onboarding-permissions 680 480 --ui-preview-onboarding --ui-preview-onboarding-step=permissions
-run_preview onboarding-customize 680 480 --ui-preview-onboarding --ui-preview-onboarding-step=customize
-run_preview onboarding-ready 680 480 --ui-preview-onboarding --ui-preview-onboarding-step=ready
-run_preview overflow-panel 600 200 --ui-preview-panel
+run_language_previews() {
+    local language="$1"
+    local prefix="$2"
 
-printf 'UIPreviewSmokeTests: 8 passed\n'
+    run_preview "$prefix-status" 700 500 --ui-preview-language="$language" --ui-preview-tab=status
+    run_preview "$prefix-items" 700 500 --ui-preview-language="$language" --ui-preview-tab=items
+    run_preview "$prefix-preferences" 700 500 --ui-preview-language="$language" --ui-preview-tab=preferences
+    run_preview "$prefix-onboarding-welcome" 680 480 --ui-preview-language="$language" --ui-preview-onboarding
+    run_preview "$prefix-onboarding-permissions" 680 480 --ui-preview-language="$language" --ui-preview-onboarding --ui-preview-onboarding-step=permissions
+    run_preview "$prefix-onboarding-customize" 680 480 --ui-preview-language="$language" --ui-preview-onboarding --ui-preview-onboarding-step=customize
+    run_preview "$prefix-onboarding-ready" 680 480 --ui-preview-language="$language" --ui-preview-onboarding --ui-preview-onboarding-step=ready
+    run_preview "$prefix-overflow-panel" 600 200 --ui-preview-language="$language" --ui-preview-panel
+}
+
+run_language_previews zh-Hans zh
+run_language_previews en en
+
+printf 'UIPreviewSmokeTests: 16 passed\n'

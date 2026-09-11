@@ -15,25 +15,29 @@ private enum AppAccessTests {
         let defaults = UserDefaults(suiteName: domain)!
         defer { defaults.removePersistentDomain(forName: domain) }
         let preferences = PreferencesStore(defaults: defaults)
+        let language = AppLanguageController(defaults: defaults, preferredLanguages: ["zh-Hans"],
+                                             arguments: [], rootBundle: .main)
         var policies: [Bool] = []
-        let visibility = DockVisibilityController(preferences: preferences, previewMode: false,
+        let visibility = DockVisibilityController(preferences: preferences, previewMode: false, language: language,
             applyPolicy: { policies.append($0); return true })
         try expect(visibility.showsDockIcon, "Dock access should be enabled by default.")
         visibility.applyInitialPolicy()
         try expect(policies == [true], "Startup must apply the saved activation policy.")
         visibility.setDockIconVisible(false)
         try expect(!visibility.showsDockIcon && !preferences.showDockIcon, "Hiding the Dock icon must persist.")
-        let restarted = DockVisibilityController(preferences: preferences, previewMode: false, applyPolicy: { _ in true })
+        let restarted = DockVisibilityController(preferences: preferences, previewMode: false, language: language,
+                                                 applyPolicy: { _ in true })
         try expect(!restarted.showsDockIcon, "The hidden preference must survive restart.")
         visibility.setDockIconVisible(true)
         try expect(preferences.showDockIcon && policies == [true, false, true], "The icon must be restorable without restarting.")
 
-        let failing = DockVisibilityController(preferences: preferences, previewMode: false, applyPolicy: { _ in false })
+        let failing = DockVisibilityController(preferences: preferences, previewMode: false, language: language,
+                                               applyPolicy: { _ in false })
         failing.setDockIconVisible(false)
         try expect(failing.showsDockIcon && preferences.showDockIcon, "An OS refusal must not persist a false success.")
         try expect(failing.errorMessage != nil, "An OS refusal must be visible.")
         var previewCalls = 0
-        let preview = DockVisibilityController(preferences: preferences, previewMode: true,
+        let preview = DockVisibilityController(preferences: preferences, previewMode: true, language: language,
             applyPolicy: { _ in previewCalls += 1; return true })
         preview.applyInitialPolicy()
         preview.setDockIconVisible(false)
@@ -44,7 +48,8 @@ private enum AppAccessTests {
         var hidden = 0
         var quits = 0
         let menus = AppMenuController(dockVisibility: visibility, showSettings: { settings += 1 },
-            showTray: { tray += 1 }, hideApplication: { hidden += 1 }, quitApplication: { quits += 1 })
+            showTray: { tray += 1 }, hideApplication: { hidden += 1 }, quitApplication: { quits += 1 },
+            language: language)
         let status = menus.makeStatusMenu()
         try expect(status.item(withTitle: "退出 MacBarTuck") != nil, "The status menu must always offer Quit.")
         try expect(status.item(withTitle: "设置…")?.keyEquivalent == ",", "Settings must have the standard keyboard shortcut.")
@@ -63,15 +68,24 @@ private enum AppAccessTests {
                    "Hiding the Dock icon must preserve Settings and Quit access.")
 
         visibility.setDockIconVisible(true)
+        language.setLanguage(.english)
+        let englishStatus = menus.makeStatusMenu()
+        try expect(englishStatus.item(withTitle: "Quit MacBarTuck") != nil,
+                   "Switching languages must update the status menu immediately.")
+        try expect(englishStatus.item(withTitle: "Settings…")?.keyEquivalent == ",",
+                   "The English Settings item must retain the standard shortcut.")
+        try expect(englishStatus.item(withTitle: "Show in Dock")?.state == .on,
+                   "The English menu must preserve the current Dock state.")
         let dock = menus.makeDockMenu()
-        try expect(dock.item(withTitle: "设置…") != nil, "The Dock menu must expose Settings.")
+        try expect(dock.item(withTitle: "Settings…") != nil, "The Dock menu must expose localized Settings.")
+        try expect(dock.item(withTitle: "Hide Dock Icon") != nil, "The Dock visibility command must be localized.")
         try expect(dock.items.allSatisfy { $0.action != #selector(NSApplication.terminate(_:)) },
                    "Custom Dock items must not duplicate the system Quit item.")
-        dock.performActionForItem(at: dock.indexOfItem(withTitle: "隐藏程序坞图标"))
+        dock.performActionForItem(at: dock.indexOfItem(withTitle: "Hide Dock Icon"))
         try expect(!visibility.showsDockIcon, "Dock hiding must use the shared visibility controller.")
         _ = NSApp.setActivationPolicy(.accessory)
         preferences.showDockIcon = false
-        let alreadyHidden = DockVisibilityController(preferences: preferences, previewMode: false)
+        let alreadyHidden = DockVisibilityController(preferences: preferences, previewMode: false, language: language)
         alreadyHidden.applyInitialPolicy()
         try expect(alreadyHidden.errorMessage == nil, "Starting already hidden must not report a policy error.")
         print("AppAccessTests: \(checks) passed")

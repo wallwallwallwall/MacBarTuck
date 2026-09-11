@@ -7,6 +7,7 @@ BUILD_DIR="$ROOT/.test-build"
 SOURCES=()
 
 for source in \
+    "$ROOT/MacBarTuck/UI/AppLocalization.swift" \
     "$ROOT/MacBarTuck/Core/MenuItemRule.swift" \
     "$ROOT/MacBarTuck/Core/MenuItemRuleCodec.swift" \
     "$ROOT/MacBarTuck/Core/DisplayConstraint.swift" \
@@ -23,6 +24,8 @@ done
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
+ditto "$ROOT/MacBarTuck/Resources/zh-Hans.lproj" "$BUILD_DIR/zh-Hans.lproj"
+ditto "$ROOT/MacBarTuck/Resources/en.lproj" "$BUILD_DIR/en.lproj"
 
 swiftc \
     -parse-as-library \
@@ -68,7 +71,17 @@ swiftc -parse-as-library "${SOURCES[@]}" \
 "$BUILD_DIR/AppAccessTests"
 
 swiftc -parse-as-library \
+    "$ROOT/MacBarTuck/UI/AppLocalization.swift" \
     "$ROOT/MacBarTuck/Services/PermissionManager.swift" \
     "$ROOT/Tests/PermissionStateTests.swift" \
     -o "$BUILD_DIR/PermissionStateTests"
 "$BUILD_DIR/PermissionStateTests"
+
+swiftc \
+    -parse-as-library \
+    "$ROOT/MacBarTuck/UI/AppLocalization.swift" \
+    "$ROOT/MacBarTuck/Core/DisplayConstraint.swift" \
+    "$ROOT/MacBarTuck/Models/DisplaySnapshot.swift" \
+    "$ROOT/Tests/LocalizationTests.swift" \
+    -o "$BUILD_DIR/LocalizationTests"
+"$BUILD_DIR/LocalizationTests"

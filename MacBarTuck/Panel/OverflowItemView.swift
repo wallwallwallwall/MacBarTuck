@@ -7,6 +7,7 @@ struct OverflowItemView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var language: AppLanguageController
     @State private var isHovering = false
 
     var body: some View {
@@ -35,8 +36,8 @@ struct OverflowItemView: View {
         .onHover { hovering in
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) { isHovering = hovering }
         }
-        .help(item.tooltip)
-        .accessibilityLabel(item.tooltip)
+        .help(item.tooltip(for: language.selectedLanguage))
+        .accessibilityLabel(item.tooltip(for: language.selectedLanguage))
     }
 }
 

@@ -8,16 +8,19 @@ final class AppMenuController: NSObject {
     private let hideApplication: () -> Void
     private let quitApplication: () -> Void
     private let permissionSummary: () -> String
+    private let language: AppLanguageController
 
     init(dockVisibility: DockVisibilityController, showSettings: @escaping () -> Void,
          showTray: @escaping () -> Void, hideApplication: @escaping () -> Void,
-         quitApplication: @escaping () -> Void, permissionSummary: @escaping () -> String = { "" }) {
+         quitApplication: @escaping () -> Void, permissionSummary: @escaping () -> String = { "" },
+         language: AppLanguageController = .shared) {
         self.dockVisibility = dockVisibility
         self.showSettings = showSettings
         self.showTray = showTray
         self.hideApplication = hideApplication
         self.quitApplication = quitApplication
         self.permissionSummary = permissionSummary
+        self.language = language
     }
 
     func makeStatusMenu() -> NSMenu {
@@ -30,23 +33,23 @@ final class AppMenuController: NSObject {
             menu.addItem(status)
             menu.addItem(.separator())
         }
-        menu.addItem(item("打开托盘", action: #selector(openTray), symbol: "rectangle.stack"))
-        menu.addItem(item("设置…", action: #selector(openSettings), key: ",", symbol: "gearshape"))
+        menu.addItem(item(language.text("menu.open_tray"), action: #selector(openTray), symbol: "rectangle.stack"))
+        menu.addItem(item(language.text("menu.settings"), action: #selector(openSettings), key: ",", symbol: "gearshape"))
         menu.addItem(.separator())
-        let dock = item("在程序坞中显示", action: #selector(toggleDock))
+        let dock = item(language.text("menu.show_dock"), action: #selector(toggleDock))
         dock.state = dockVisibility.showsDockIcon ? .on : .off
         menu.addItem(dock)
-        menu.addItem(item("隐藏窗口", action: #selector(hideWindows), key: "h"))
+        menu.addItem(item(language.text("menu.hide_windows"), action: #selector(hideWindows), key: "h"))
         menu.addItem(.separator())
-        menu.addItem(item("退出 MacBarTuck", action: #selector(quit), key: "q"))
+        menu.addItem(item(language.text("menu.quit"), action: #selector(quit), key: "q"))
         return menu
     }
 
     func makeDockMenu() -> NSMenu {
         let menu = NSMenu(title: "MacBarTuck")
         menu.autoenablesItems = false
-        menu.addItem(item("设置…", action: #selector(openSettings), symbol: "gearshape"))
-        menu.addItem(item("隐藏程序坞图标", action: #selector(hideDock)))
+        menu.addItem(item(language.text("menu.settings"), action: #selector(openSettings), symbol: "gearshape"))
+        menu.addItem(item(language.text("menu.hide_dock"), action: #selector(hideDock)))
         // The Dock supplies the standard Hide and Quit actions itself.
         return menu
     }

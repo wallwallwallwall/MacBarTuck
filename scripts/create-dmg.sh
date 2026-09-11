@@ -40,7 +40,7 @@ xattr -cr "$APP_STAGED"
 
 ARCHS_FOUND="$(lipo -archs "$APP_STAGED/Contents/MacOS/MacBarTuck")"
 if [[ "$ARCHS_FOUND" != "arm64" ]]; then
-  print -u2 "Unexpected executable architectures: $ARCHS_FOUND"
+  printf 'Unexpected executable architectures: %s\n' "$ARCHS_FOUND" >&2
   exit 1
 fi
 
@@ -88,5 +88,5 @@ hdiutil create \
   shasum -a 256 -c "$DMG_NAME.sha256"
 )
 
-print "Created $DMG_PATH"
-print "Created $DMG_PATH.sha256"
+printf 'Created %s\n' "$DMG_PATH"
+printf 'Created %s\n' "$DMG_PATH.sha256"

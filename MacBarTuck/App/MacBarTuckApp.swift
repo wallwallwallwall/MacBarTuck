@@ -6,15 +6,26 @@ struct MacBarTuckApp: App {
 
     var body: some Scene {
         Settings {
-            SettingsView(store: appDelegate.store, dockVisibility: appDelegate.dockVisibility,
-                         restartApplication: { appDelegate.restartApplication() },
-                         showOnboarding: { appDelegate.showOnboarding() })
+            AppLocalizedRoot(language: appDelegate.language) {
+                SettingsView(store: appDelegate.store, dockVisibility: appDelegate.dockVisibility,
+                             restartApplication: { appDelegate.restartApplication() },
+                             showOnboarding: { appDelegate.showOnboarding() })
+            }
         }
         .commands {
-            CommandGroup(replacing: .appSettings) {
-                Button("设置…") { appDelegate.showSettings() }
-                    .keyboardShortcut(",", modifiers: .command)
-            }
+            LocalizedAppCommands(language: appDelegate.language, showSettings: appDelegate.showSettings)
+        }
+    }
+}
+
+private struct LocalizedAppCommands: Commands {
+    @ObservedObject var language: AppLanguageController
+    let showSettings: () -> Void
+
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button(language.text("menu.settings"), action: showSettings)
+                .keyboardShortcut(",", modifiers: .command)
         }
     }
 }

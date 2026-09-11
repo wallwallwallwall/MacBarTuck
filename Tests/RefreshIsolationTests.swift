@@ -11,8 +11,11 @@ enum RefreshIsolationTests {
         let preferences = PreferencesStore(defaults: defaults)
         preferences.hasCompletedOnboarding = true
         preferences.layoutManagementEnabled = true
+        let language = AppLanguageController(defaults: defaults, preferredLanguages: ["zh-Hans"],
+                                             arguments: [], rootBundle: .main)
         let permissions = PermissionManager(accessibilityStatus: { true }, accessibilityRequest: {},
-            screenCaptureStatus: { true }, screenCaptureRequest: { true }, openSettings: { _ in }, history: nil)
+            screenCaptureStatus: { true }, screenCaptureRequest: { true }, openSettings: { _ in }, history: nil,
+            language: language)
         let windows: [[String: Any]] = [[kCGWindowLayer as String: 25,
             kCGWindowNumber as String: 4000000000, kCGWindowOwnerPID as String: -1,
             kCGWindowOwnerName as String: "Fixture", kCGWindowName as String: "utility",
@@ -21,7 +24,7 @@ enum RefreshIsolationTests {
             readDisplayBounds: { [CGRect(x: 0, y: 0, width: 1512, height: 982)] }, ownBundleIdentifier: "test.host")
         preferences.saveRule(.alwaysHidden, for: scanner.scan(selectedIDs: []).first!.id)
         var hideCompletions: [(Int) -> Void] = []
-        let store = MenuBarItemStore(permissions: permissions, preferences: preferences, scanner: scanner,
+        let store = MenuBarItemStore(permissions: permissions, preferences: preferences, language: language, scanner: scanner,
             captureOverride: { items in Dictionary(uniqueKeysWithValues: items.map { ($0.id, NSImage(size: NSSize(width: 24, height: 24))) }) },
             visibilityOverride: { _ in true }, hideOverride: { _, _, complete in hideCompletions.append(complete) })
         var operations = 0

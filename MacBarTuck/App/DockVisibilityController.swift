@@ -8,9 +8,11 @@ final class DockVisibilityController: ObservableObject {
     private let preferences: PreferencesStore
     private let previewMode: Bool
     private let applyPolicy: @MainActor (Bool) -> Bool
+    private let language: AppLanguageController
 
     init(preferences: PreferencesStore = PreferencesStore(),
          previewMode: Bool = ProcessInfo.processInfo.arguments.contains("--ui-preview"),
+         language: AppLanguageController = .shared,
          applyPolicy: @escaping @MainActor (Bool) -> Bool = { visible in
              let desired: NSApplication.ActivationPolicy = visible ? .regular : .accessory
              // AppKit returns false when no change is needed.
@@ -22,19 +24,20 @@ final class DockVisibilityController: ObservableObject {
          }) {
         self.preferences = preferences
         self.previewMode = previewMode
+        self.language = language
         self.applyPolicy = applyPolicy
         showsDockIcon = preferences.showDockIcon
     }
 
     func applyInitialPolicy() {
         guard !previewMode else { return }
-        errorMessage = applyPolicy(showsDockIcon) ? nil : "无法更新程序坞显示，请重试。"
+        errorMessage = applyPolicy(showsDockIcon) ? nil : language.text("error.dock")
     }
 
     func setDockIconVisible(_ visible: Bool) {
         if previewMode { showsDockIcon = visible; return }
         guard applyPolicy(visible) else {
-            errorMessage = "无法更新程序坞显示，请重试。"
+            errorMessage = language.text("error.dock")
             return
         }
         preferences.showDockIcon = visible

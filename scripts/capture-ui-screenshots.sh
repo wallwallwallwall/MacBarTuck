@@ -38,13 +38,21 @@ capture_preview() {
     printf '%s: captured\n' "$output"
 }
 
-capture_preview settings.png 700 500 --ui-preview-tab=status
-capture_preview items.png 700 500 --ui-preview-tab=items
-capture_preview preferences.png 700 500 --ui-preview-tab=preferences
-capture_preview onboarding.png 680 480 --ui-preview-onboarding
-capture_preview onboarding-permissions.png 680 480 --ui-preview-onboarding --ui-preview-onboarding-step=permissions
-capture_preview onboarding-customize.png 680 480 --ui-preview-onboarding --ui-preview-onboarding-step=customize
-capture_preview onboarding-ready.png 680 480 --ui-preview-onboarding --ui-preview-onboarding-step=ready
-capture_preview overflow-panel.png 600 200 --ui-preview-panel
+capture_language_previews() {
+    local language="$1"
+    local suffix="$2"
 
-printf 'UI screenshots: 8 captured\n'
+    capture_preview "settings$suffix.png" 700 500 --ui-preview-language="$language" --ui-preview-tab=status
+    capture_preview "items$suffix.png" 700 500 --ui-preview-language="$language" --ui-preview-tab=items
+    capture_preview "preferences$suffix.png" 700 500 --ui-preview-language="$language" --ui-preview-tab=preferences
+    capture_preview "onboarding$suffix.png" 680 480 --ui-preview-language="$language" --ui-preview-onboarding
+    capture_preview "onboarding-permissions$suffix.png" 680 480 --ui-preview-language="$language" --ui-preview-onboarding --ui-preview-onboarding-step=permissions
+    capture_preview "onboarding-customize$suffix.png" 680 480 --ui-preview-language="$language" --ui-preview-onboarding --ui-preview-onboarding-step=customize
+    capture_preview "onboarding-ready$suffix.png" 680 480 --ui-preview-language="$language" --ui-preview-onboarding --ui-preview-onboarding-step=ready
+    capture_preview "overflow-panel$suffix.png" 600 200 --ui-preview-language="$language" --ui-preview-panel
+}
+
+capture_language_previews zh-Hans ""
+capture_language_previews en "-en"
+
+printf 'UI screenshots: 16 captured\n'

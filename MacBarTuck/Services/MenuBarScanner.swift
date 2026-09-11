@@ -266,7 +266,7 @@ final class MenuBarScanner {
                     ?? (bundle.object(forInfoDictionaryKey: "CFBundleName") as? String)
                 representative.resolvedApplicationIcon = NSWorkspace.shared.icon(forFile: url.path)
             }
-            if representative.title == "com.apple.TextInputMenuAgent" { representative.resolvedTitle = "输入法" }
+            if representative.title == "com.apple.TextInputMenuAgent" { representative.resolvedTitle = "Input Source" }
             result.append(representative)
         }
         let currentWindowIDs = Set(items.compactMap(\.windowID))
@@ -275,7 +275,7 @@ final class MenuBarScanner {
         var unidentified = 0
         for item in sorted where Self.isAnonymousTitle(item.title) {
             unidentified += 1
-            item.resolvedTitle = "未识别项目 \(unidentified)"
+            item.resolvedTitle = "Unidentified Item \(unidentified)"
         }
         return sorted
     }

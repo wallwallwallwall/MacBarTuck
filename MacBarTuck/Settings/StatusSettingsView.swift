@@ -4,64 +4,68 @@ struct StatusSettingsView: View {
     @ObservedObject var store: MenuBarItemStore
     @ObservedObject var permissions: PermissionManager
     var restartApplication: () -> Void = {}
+    @EnvironmentObject private var language: AppLanguageController
 
     var body: some View {
         Form {
-            Section("系统权限") {
-                permissionRow("辅助功能", symbol: "accessibility",
+            Section(language.text("permissions.section")) {
+                permissionRow(language.text("permissions.accessibility"), symbol: "accessibility",
                               granted: store.isUIPreviewMode || permissions.accessibilityGranted,
                               previouslyEffective: permissions.accessibilityWasPreviouslyEffective,
                               action: permissions.requestAccessibility)
-                permissionRow("屏幕录制", symbol: "rectangle.inset.filled.and.person.filled",
+                permissionRow(language.text("permissions.screen_recording"), symbol: "rectangle.inset.filled.and.person.filled",
                               granted: store.isUIPreviewMode || permissions.screenRecordingGranted,
                               previouslyEffective: permissions.screenWasPreviouslyEffective,
                               action: permissions.requestScreenRecording)
                 HStack {
-                    Button("重新检查", systemImage: "arrow.clockwise") {
+                    Button(language.text("permissions.recheck"), systemImage: "arrow.clockwise") {
                         permissions.refresh()
                         store.refresh()
                     }
                     Spacer()
                     if let checked = permissions.lastChecked {
-                        Text("检查于 \(checked.formatted(date: .omitted, time: .standard))")
+                        Text(language.text("permissions.checked_at", checked.formatted(
+                            .dateTime.hour().minute().second().locale(language.selectedLanguage.locale)
+                        )))
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
             if !permissions.isReady && !store.isUIPreviewMode {
-                Section("开关已打开，但仍未生效") {
+                Section(language.text("permissions.not_effective.section")) {
                     Text(permissions.screenRestartSuggested
-                        ? "系统已接受录屏请求，当前进程尚未生效，请重新启动。"
-                        : "先重新启动 MacBarTuck，再检查两项状态是否变为“已生效”。")
+                        ? language.text("permissions.restart.screen")
+                        : language.text("permissions.restart.general"))
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                     HStack {
-                        Button("重新启动 MacBarTuck", action: restartApplication)
-                        Button("定位当前应用") {
+                        Button(language.text("permissions.restart.button"), action: restartApplication)
+                        Button(language.text("permissions.locate_app")) {
                             NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
                         }
                     }
                     if permissions.isAdHocSigned {
-                        Text("此版本使用临时签名。更新后，系统可能仍保留旧版本的授权开关。若重启后仍未生效，请在系统设置中移除旧的 BarTuck 或 MacBarTuck 条目，再添加当前应用并允许访问。")
+                        Text(language.text("permissions.adhoc_note"))
                             .font(.system(size: 12)).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     HStack {
-                        Button("辅助功能设置", action: permissions.openAccessibilitySettings)
-                        Button("屏幕录制设置", action: permissions.openScreenRecordingSettings)
+                        Button(language.text("permissions.accessibility.settings"), action: permissions.openAccessibilitySettings)
+                        Button(language.text("permissions.screen_recording.settings"), action: permissions.openScreenRecordingSettings)
                     }
                 }
             }
-            Section("显示器") {
+            Section(language.text("permissions.displays.section")) {
                 ForEach(store.displays) { display in
                     HStack(spacing: 12) {
                         Image(systemName: display.hasNotch ? "macbook" : "display")
                             .font(.system(size: 19)).foregroundStyle(.secondary).frame(width: 28)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(display.name == "Built-in Retina Display" ? "内置显示屏" : display.name)
+                            Text(display.displayName(for: language))
                             Text(display.resolutionLabel).font(.system(size: 11)).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(display.isMain ? "主显示器" : "扩展显示器").foregroundStyle(.secondary)
+                        Text(display.isMain ? language.text("permissions.display.main") : language.text("permissions.display.extended"))
+                            .foregroundStyle(.secondary)
                     }.padding(.vertical, 4)
                 }
             }
@@ -76,13 +80,16 @@ struct StatusSettingsView: View {
             Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 28)
             Text(title)
             Spacer()
-            Label(granted ? (store.isUIPreviewMode ? "示例：已生效" : "已生效") : (previouslyEffective ? "曾允许 · 当前未生效" : "未生效"),
+            Label(granted
+                  ? (store.isUIPreviewMode ? language.text("permissions.status.preview_effective") : language.text("permissions.status.effective"))
+                  : (previouslyEffective ? language.text("permissions.status.previous") : language.text("permissions.status.not_effective")),
                   systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.circle")
                 .foregroundStyle(granted ? Color.green : Color.orange)
             if granted {
                 EmptyView()
             } else {
-                Button("授权…", action: action).accessibilityLabel("授权\(title)")
+                Button(language.text("permissions.authorize"), action: action)
+                    .accessibilityLabel(language.text("permissions.authorize.label", title))
             }
         }.padding(.vertical, 5)
     }

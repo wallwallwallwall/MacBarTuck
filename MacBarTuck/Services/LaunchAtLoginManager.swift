@@ -5,8 +5,12 @@ import ServiceManagement
 final class LaunchAtLoginManager: ObservableObject {
     @Published private(set) var isEnabled = false
     @Published private(set) var errorMessage: String?
+    private let language: AppLanguageController
 
-    init() { refresh() }
+    init(language: AppLanguageController = .shared) {
+        self.language = language
+        refresh()
+    }
 
     func refresh() {
         isEnabled = SMAppService.mainApp.status == .enabled
@@ -21,7 +25,7 @@ final class LaunchAtLoginManager: ObservableObject {
             }
             errorMessage = nil
         } catch {
-            errorMessage = "无法更新登录启动设置：\(error.localizedDescription)"
+            errorMessage = language.text("error.login", error.localizedDescription)
         }
         refresh()
     }

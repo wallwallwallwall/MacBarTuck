@@ -5,6 +5,7 @@ import SwiftUI
 final class OverflowPanelController: NSObject, NSWindowDelegate {
     private let panel: NSPanel
     private let store: MenuBarItemStore
+    private let language: AppLanguageController
     private let presentation = OverflowPanelPresentationState()
     private var globalEventMonitor: Any?
     private var localEventMonitor: Any?
@@ -18,12 +19,12 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
     // the click just opened.
     var onItemActivation: (() -> Void)?
 
-    init(store: MenuBarItemStore) {
+    init(store: MenuBarItemStore, language: AppLanguageController = .shared) {
         self.store = store
+        self.language = language
         panel = NSPanel(contentRect: .init(x: 0, y: 0, width: 260, height: OverflowPanelView.preferredHeight), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
-        panel.title = "MacBarTuck 托盘"
-        panel.setAccessibilityLabel("MacBarTuck 托盘")
+        updateLocalization()
         panel.level = .statusBar
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
@@ -34,15 +35,17 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         panel.animationBehavior = .none
         panel.isReleasedWhenClosed = false
         panel.delegate = self
-        panel.contentView = NSHostingView(rootView: OverflowPanelView(store: store, presentation: presentation, onActivate: { [weak self] item in
-            self?.onItemActivation?()
-            self?.close()
-            self?.store.activate(item)
-        }, onRightActivate: { [weak self] item in
-            self?.onItemActivation?()
-            self?.close()
-            self?.store.activate(item, mouseButton: .right)
-        }))
+        panel.contentView = NSHostingView(rootView: AppLocalizedRoot(language: language) {
+            OverflowPanelView(store: self.store, presentation: self.presentation, onActivate: { [weak self] item in
+                self?.onItemActivation?()
+                self?.close()
+                self?.store.activate(item)
+            }, onRightActivate: { [weak self] item in
+                self?.onItemActivation?()
+                self?.close()
+                self?.store.activate(item, mouseButton: .right)
+            })
+        })
         panel.orderOut(nil)
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -57,6 +60,13 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
     }
 
     func toggle(relativeTo button: NSStatusBarButton) { panel.isVisible ? close() : show(relativeTo: button) }
+    var isVisible: Bool { panel.isVisible }
+
+    func updateLocalization() {
+        let title = language.text("window.panel")
+        panel.title = title
+        panel.setAccessibilityLabel(title)
+    }
     func show(relativeTo button: NSStatusBarButton) {
         guard !panel.isVisible else { return }
         closeWorkItem?.cancel()

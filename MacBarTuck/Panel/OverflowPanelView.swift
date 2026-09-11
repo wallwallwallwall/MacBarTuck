@@ -16,6 +16,7 @@ struct OverflowPanelView: View {
     let onRightActivate: (MenuBarItem) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var language: AppLanguageController
 
     static let preferredHeight: CGFloat = 50
 
@@ -39,7 +40,7 @@ struct OverflowPanelView: View {
                 .foregroundStyle(MacBarTuckTheme.accentStrong)
                 .frame(width: 30, height: 30)
                 .background(MacBarTuckTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .help("MacBarTuck 托盘")
+                .help(language.text("panel.help"))
 
             Rectangle()
                 .fill(MacBarTuckTheme.strongStroke)
@@ -48,7 +49,7 @@ struct OverflowPanelView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
                     if store.overflowItems.isEmpty {
-                        Text(store.selectedItems.isEmpty ? "没有已收起的项目" : "尚未成功收起")
+                        Text(store.selectedItems.isEmpty ? language.text("panel.empty") : language.text("panel.not_hidden"))
                             .font(.system(size: 11))
                             .foregroundStyle(MacBarTuckTheme.secondaryText)
                             .padding(.horizontal, 10)

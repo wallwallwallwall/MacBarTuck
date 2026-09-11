@@ -5,6 +5,7 @@ struct SettingsView: View {
     @ObservedObject var dockVisibility: DockVisibilityController
     let showOnboarding: () -> Void
 
+    @EnvironmentObject private var language: AppLanguageController
     @ObservedObject private var permissions: PermissionManager
     private let restartApplication: () -> Void
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
@@ -25,21 +26,21 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Picker("页面", selection: $selectedTab) {
-                    ForEach(SettingsTab.allCases) { tab in Text(tab.title).tag(tab) }
+                Picker(language.text("settings.page"), selection: $selectedTab) {
+                    ForEach(SettingsTab.allCases) { tab in Text(tab.title(language)).tag(tab) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(width: 340)
                 Spacer()
                 Button { selectedTab = .status } label: {
-                    Label(store.isUIPreviewMode ? "权限示例" : permissions.statusTitle,
+                    Label(store.isUIPreviewMode ? language.text("settings.permission.example") : permissions.statusTitle,
                           systemImage: permissions.isReady ? "checkmark.circle.fill" : "exclamationmark.circle")
                         .foregroundStyle(permissions.isReady ? Color.green : Color.orange)
                 }
                 .buttonStyle(.plain).font(.system(size: 11))
                 .help(permissions.statusDetail)
-                Toggle("启用收纳", isOn: Binding(
+                Toggle(language.text("settings.collection.enabled"), isOn: Binding(
                     get: { store.layoutManagementEnabled },
                     set: { value in
                         store.setLayoutManagementEnabled(value)
@@ -48,7 +49,7 @@ struct SettingsView: View {
                 ))
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .help("收起所选的菜单栏项目")
+                .help(language.text("settings.collection.help"))
             }
             .padding(.horizontal, 20)
             .frame(height: 52)
@@ -73,7 +74,7 @@ struct SettingsView: View {
             get: { store.lastActivationError != nil },
             set: { if !$0 { store.lastActivationError = nil } }
         )) {
-            Button("好", role: .cancel) { store.lastActivationError = nil }
+            Button(language.text("common.ok"), role: .cancel) { store.lastActivationError = nil }
         } message: { Text(store.lastActivationError ?? "") }
     }
 
@@ -100,11 +101,11 @@ struct SettingsView: View {
 private enum SettingsTab: String, CaseIterable, Identifiable {
     case items, preferences, status
     var id: String { rawValue }
-    var title: String {
+    func title(_ language: AppLanguageController) -> String {
         switch self {
-        case .items: "菜单项"
-        case .preferences: "通用"
-        case .status: "权限与显示器"
+        case .items: language.text("settings.tab.items")
+        case .preferences: language.text("settings.tab.general")
+        case .status: language.text("settings.tab.permissions")
         }
     }
     static var previewSelection: SettingsTab {

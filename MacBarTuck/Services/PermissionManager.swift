@@ -19,14 +19,21 @@ final class PermissionManager: ObservableObject {
     private let screenCaptureRequest: () -> Bool
     private let openSettings: (String) -> Void
     private let history: UserDefaults?
+    private let language: AppLanguageController
     let isAdHocSigned = PermissionManager.hasAdHocSignature()
 
     var effectiveCount: Int { (accessibilityGranted ? 1 : 0) + (screenRecordingGranted ? 1 : 0) }
     var effectiveAccessKey: Int { (accessibilityGranted ? 1 : 0) + (screenRecordingGranted ? 2 : 0) }
     var isReady: Bool { accessibilityGranted && screenRecordingGranted }
-    var statusTitle: String { isReady ? "权限已就绪" : "权限 \(effectiveCount)/2" }
+    var statusTitle: String {
+        isReady ? language.text("permissions.ready") : language.text("permissions.count", effectiveCount)
+    }
     var statusDetail: String {
-        "辅助功能：\(accessibilityGranted ? "已生效" : "未生效")；屏幕录制：\(screenRecordingGranted ? "已生效" : "未生效")"
+        language.text(
+            "permissions.summary",
+            accessibilityGranted ? language.text("permissions.status.effective") : language.text("permissions.status.not_effective"),
+            screenRecordingGranted ? language.text("permissions.status.effective") : language.text("permissions.status.not_effective")
+        )
     }
 
     init(
@@ -40,7 +47,8 @@ final class PermissionManager: ObservableObject {
             guard let url = URL(string: value) else { return }
             NSWorkspace.shared.open(url)
         },
-        history: UserDefaults? = ProcessInfo.processInfo.arguments.contains("--ui-preview") ? nil : .standard
+        history: UserDefaults? = ProcessInfo.processInfo.arguments.contains("--ui-preview") ? nil : .standard,
+        language: AppLanguageController = .shared
     ) {
         self.accessibilityStatus = accessibilityStatus
         self.accessibilityRequest = accessibilityRequest
@@ -48,6 +56,7 @@ final class PermissionManager: ObservableObject {
         self.screenCaptureStatus = screenCaptureStatus
         self.screenCaptureRequest = screenCaptureRequest
         self.openSettings = openSettings
+        self.language = language
         refresh()
     }
 

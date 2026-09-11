@@ -1,4 +1,4 @@
-MacBarTuck 0.1.8 安装说明
+MacBarTuck 0.1.9 安装说明
 
 1. 将 MacBarTuck.app 拖入 Applications 文件夹。
 2. 在“应用程序”中打开 MacBarTuck。
@@ -14,3 +14,5 @@ MacBarTuck 仅支持 Apple Silicon（arm64）和 macOS 15.0 或更高版本。
 若系统开关已经打开但这里仍显示“未生效”，先点“重新启动 MacBarTuck”。
 仍未生效时，在两项系统权限中移除旧的 BarTuck 或 MacBarTuck 条目，重新添加当前应用。
 “定位当前应用”可以找到正在运行的那份程序，避免误授权到旧备份。
+
+可在“通用 → 语言”中切换中文或 English，修改立即生效并在下次启动时保留。

@@ -8,6 +8,7 @@ final class StatusBarController: NSObject {
     private let store: MenuBarItemStore
     private let panelController: OverflowPanelController
     private let menuProvider: () -> NSMenu
+    private let language: AppLanguageController
     private var isShowingContextMenu = false
     private let logger = Logger(subsystem: "com.bartuck.app", category: "status")
     private var hoverMonitor: Any?
@@ -18,7 +19,8 @@ final class StatusBarController: NSObject {
     private var isApplyingLayout = false
     private var isTerminating = false
 
-    init(store: MenuBarItemStore, menuProvider: @escaping () -> NSMenu) {
+    init(store: MenuBarItemStore, language: AppLanguageController = .shared,
+         menuProvider: @escaping () -> NSMenu) {
         let defaults = UserDefaults.standard
         // Keep the legacy autosave names so upgrades retain menu bar positions.
         let arrowName = "BarTuckControlItem"
@@ -41,8 +43,9 @@ final class StatusBarController: NSObject {
         hiddenSectionItem = NSStatusBar.system.statusItem(withLength: hiddenLength)
         hiddenSectionItem.autosaveName = hiddenName
         self.store = store
+        self.language = language
         self.menuProvider = menuProvider
-        panelController = OverflowPanelController(store: store)
+        panelController = OverflowPanelController(store: store, language: language)
         super.init()
         configureHiddenSectionItem()
         store.onImagesReady = { [weak self] in
@@ -64,16 +67,16 @@ final class StatusBarController: NSObject {
         if #unavailable(macOS 27.0) {
             hiddenSectionItem.isVisible = true
         }
-        button?.image = Self.statusBarImage(isExpanded: false)
+        button?.image = Self.statusBarImage(isExpanded: false, language: language)
         button?.imagePosition = .imageOnly
-        button?.toolTip = "打开 MacBarTuck 托盘；右键显示菜单"
-        button?.setAccessibilityLabel("MacBarTuck 菜单栏托盘")
+        updateLocalization()
         button?.target = self
         button?.action = #selector(togglePanel)
         button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         updateHiddenSectionLength()
         panelController.onVisibilityChanged = { [weak self] isVisible in
-            self?.statusItem.button?.image = Self.statusBarImage(isExpanded: isVisible)
+            guard let self else { return }
+            self.statusItem.button?.image = Self.statusBarImage(isExpanded: isVisible, language: self.language)
         }
         panelController.onItemActivation = { [weak self] in
             // The activation path posts a real session click at a temporary
@@ -178,6 +181,13 @@ final class StatusBarController: NSObject {
         panelController.show(relativeTo: button)
     }
 
+    func updateLocalization() {
+        statusItem.button?.toolTip = language.text("status.tooltip")
+        statusItem.button?.setAccessibilityLabel(language.text("status.accessibility"))
+        statusItem.button?.image = Self.statusBarImage(isExpanded: panelController.isVisible, language: language)
+        panelController.updateLocalization()
+    }
+
     private func storeControlItemFrame(for button: NSStatusBarButton) {
         publishStatusItemWindowIDs()
         if let frame = button.macBarTuckScreenFrame { store.updateControlItemFrame(frame) }
@@ -265,14 +275,14 @@ final class StatusBarController: NSObject {
         return defaults.object(forKey: "hoverRevealEnabled") == nil || defaults.bool(forKey: "hoverRevealEnabled")
     }
 
-    private static func statusBarImage(isExpanded: Bool) -> NSImage? {
+    private static func statusBarImage(isExpanded: Bool, language: AppLanguageController) -> NSImage? {
         let names = isExpanded
             ? ["rectangle.stack.fill", "rectangle.3.group.fill", "chevron.up"]
             : ["rectangle.stack", "rectangle.3.group", "chevron.down"]
         guard let image = names.lazy.compactMap({
             NSImage(
                 systemSymbolName: $0,
-                accessibilityDescription: isExpanded ? "收起 MacBarTuck" : "展开 MacBarTuck"
+                accessibilityDescription: isExpanded ? language.text("status.collapse") : language.text("status.expand")
             )
         }).first else { return nil }
         let configured = image.withSymbolConfiguration(

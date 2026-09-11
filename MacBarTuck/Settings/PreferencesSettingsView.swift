@@ -7,6 +7,7 @@ struct PreferencesSettingsView: View {
     @ObservedObject var dockVisibility: DockVisibilityController
     @Binding var hoverRevealEnabled: Bool
     let showOnboarding: () -> Void
+    @EnvironmentObject private var language: AppLanguageController
     @State private var confirmReset = false
     @State private var previewLoginEnabled = false
     @State private var logError: String?
@@ -14,21 +15,21 @@ struct PreferencesSettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
-                Section("菜单栏") {
-                    Toggle("自动避让刘海", isOn: Binding(
+                Section(language.text("preferences.menubar.section")) {
+                    Toggle(language.text("preferences.notch"), isOn: Binding(
                         get: { store.automaticAvoidanceEnabled }, set: { store.setAutomaticAvoidanceEnabled($0) }
                     ))
-                    Toggle("悬停时展开", isOn: $hoverRevealEnabled)
+                    Toggle(language.text("preferences.hover"), isOn: $hoverRevealEnabled)
                 }
-                Section("应用") {
-                    Toggle("在程序坞中显示 MacBarTuck", isOn: Binding(
+                Section(language.text("preferences.application.section")) {
+                    Toggle(language.text("preferences.dock"), isOn: Binding(
                         get: { dockVisibility.showsDockIcon },
                         set: { dockVisibility.setDockIconVisible($0) }
                     ))
                     if let error = dockVisibility.errorMessage {
                         Text(error).foregroundStyle(.red).font(.caption)
                     }
-                    Toggle("登录时打开 MacBarTuck", isOn: Binding(
+                    Toggle(language.text("preferences.login"), isOn: Binding(
                         get: { store.isUIPreviewMode ? previewLoginEnabled : launchAtLogin.isEnabled },
                         set: { value in
                             if store.isUIPreviewMode { previewLoginEnabled = value }
@@ -39,53 +40,73 @@ struct PreferencesSettingsView: View {
                         Text(error).foregroundStyle(.red).font(.caption)
                     }
                 }
-                Section("菜单项") {
+                Section(language.text("preferences.language.section")) {
                     HStack {
-                        Button("应用显示方式", systemImage: "checkmark") { store.applyLayout() }
+                        Text(language.text("preferences.language.label"))
+                        Spacer()
+                        Picker(language.text("preferences.language.label"), selection: Binding(
+                            get: { language.selectedLanguage },
+                            set: { language.setLanguage($0) }
+                        )) {
+                            ForEach(AppLanguage.allCases) { option in
+                                Text(option.switchLabel).tag(option)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .frame(width: 178)
+                    }
+                    Text(language.text("preferences.language.help"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section(language.text("preferences.items.section")) {
+                    HStack {
+                        Button(language.text("preferences.apply"), systemImage: "checkmark") { store.applyLayout() }
                             .disabled(!store.layoutManagementEnabled || store.selectedItems.isEmpty)
-                        Button("全部显示", systemImage: "arrow.uturn.backward") { store.setLayoutManagementEnabled(false) }
+                        Button(language.text("preferences.show_all"), systemImage: "arrow.uturn.backward") { store.setLayoutManagementEnabled(false) }
                             .disabled(!store.layoutManagementEnabled)
                     }
                     if let message = store.layoutOperationMessage {
                         Text(message).foregroundStyle(.secondary).font(.caption)
                     }
                 }
-                Section("诊断") {
+                Section(language.text("preferences.diagnostics.section")) {
                     HStack {
-                        Button("查看日志", systemImage: "doc.text.magnifyingglass") {
+                        Button(language.text("preferences.logs.open"), systemImage: "doc.text.magnifyingglass") {
                             DiagnosticLog.shared.record("diagnostics.open")
                             DiagnosticLog.shared.flush()
                             NSWorkspace.shared.activateFileViewerSelecting([DiagnosticLog.shared.fileURL])
                         }
-                        Button("导出日志…", systemImage: "square.and.arrow.up") { exportDiagnostics() }
+                        Button(language.text("preferences.logs.export"), systemImage: "square.and.arrow.up") { exportDiagnostics() }
                     }
                     if let logError { Text(logError).font(.caption).foregroundStyle(.red) }
                 }
                 Section {
                     HStack {
-                        Button("重新设置…", action: showOnboarding)
+                        Button(language.text("preferences.setup_again"), action: showOnboarding)
                         Spacer()
-                        Button("重置菜单栏设置…", role: .destructive) { confirmReset = true }
+                        Button(language.text("preferences.reset_settings"), role: .destructive) { confirmReset = true }
                     }
                 }
             }
             .formStyle(.grouped)
             .toggleStyle(.switch)
             .controlSize(.small)
-            .confirmationDialog("重置菜单栏设置？", isPresented: $confirmReset, titleVisibility: .visible) {
-                Button("重置", role: .destructive) { store.restoreAllAndDisable() }
-                Button("取消", role: .cancel) {}
+            .confirmationDialog(language.text("preferences.reset.title"), isPresented: $confirmReset, titleVisibility: .visible) {
+                Button(language.text("common.reset"), role: .destructive) { store.restoreAllAndDisable() }
+                Button(language.text("common.cancel"), role: .cancel) {}
             } message: {
-                Text("所有菜单项将恢复显示，已有规则会被清除。登录启动和系统权限不变。")
+                Text(language.text("preferences.reset.message"))
             }
             Divider()
             HStack {
                 Text("MacBarTuck \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("关于 MacBarTuck") { NSApp.orderFrontStandardAboutPanel(nil) }
+                Button(language.text("preferences.about")) { NSApp.orderFrontStandardAboutPanel(nil) }
                     .buttonStyle(.link)
-                Button("退出") { NSApp.terminate(nil) }.buttonStyle(.link)
+                Button(language.text("common.quit")) { NSApp.terminate(nil) }.buttonStyle(.link)
             }
             .font(.system(size: 11)).padding(.horizontal, 20).frame(height: 36)
         }
@@ -107,7 +128,7 @@ struct PreferencesSettingsView: View {
                 data.append(try Data(contentsOf: log.fileURL))
                 try data.write(to: url, options: .atomic)
                 logError = nil
-            } catch { logError = "导出失败：\(error.localizedDescription)" }
+            } catch { logError = language.text("preferences.export.failed", error.localizedDescription) }
         }
     }
 }
