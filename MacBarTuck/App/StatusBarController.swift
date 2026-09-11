@@ -22,6 +22,11 @@ final class StatusBarController: NSObject {
     init(store: MenuBarItemStore, language: AppLanguageController = .shared,
          menuProvider: @escaping () -> NSMenu) {
         let defaults = UserDefaults.standard
+        let hoverMigrationKey = "didDisableHoverRevealByDefaultV1"
+        if defaults.object(forKey: hoverMigrationKey) == nil {
+            defaults.set(false, forKey: "hoverRevealEnabled")
+            defaults.set(true, forKey: hoverMigrationKey)
+        }
         // Keep the legacy autosave names so upgrades retain menu bar positions.
         let arrowName = "BarTuckControlItem"
         let hiddenName = "BarTuckHiddenSection"
@@ -58,8 +63,13 @@ final class StatusBarController: NSObject {
         }
         store.onLayoutStateChanged = { [weak self] in self?.updateHiddenSectionLength() }
         store.onLayoutOperationStateChanged = { [weak self] applying in
-            self?.isApplyingLayout = applying
-            self?.updateHiddenSectionLength()
+            guard let self else { return }
+            self.isApplyingLayout = applying
+            if applying {
+                self.panelController.close()
+                self.hoverRevealSuppressedUntilPointerLeaves = true
+            }
+            self.updateHiddenSectionLength()
         }
         let button = statusItem.button
         statusItem.length = visibleLength
@@ -67,17 +77,13 @@ final class StatusBarController: NSObject {
         if #unavailable(macOS 27.0) {
             hiddenSectionItem.isVisible = true
         }
-        button?.image = Self.statusBarImage(isExpanded: false, language: language)
+        button?.image = Self.statusBarImage(language: language)
         button?.imagePosition = .imageOnly
         updateLocalization()
         button?.target = self
         button?.action = #selector(togglePanel)
         button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         updateHiddenSectionLength()
-        panelController.onVisibilityChanged = { [weak self] isVisible in
-            guard let self else { return }
-            self.statusItem.button?.image = Self.statusBarImage(isExpanded: isVisible, language: self.language)
-        }
         panelController.onItemActivation = { [weak self] in
             // The activation path posts a real session click at a temporary
             // menu-bar position. Some macOS versions emit a synthetic
@@ -132,9 +138,7 @@ final class StatusBarController: NSObject {
     }
 
     private func handleHoverPointer() {
-        guard !isShowingContextMenu else { return }
-        guard hoverRevealEnabled,
-              let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) else {
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) else {
             pointerIsAtMenuBar = false
             return
         }
@@ -144,7 +148,12 @@ final class StatusBarController: NSObject {
             hoverRevealSuppressedUntilPointerLeaves = false
             return
         }
-        guard !hoverRevealSuppressedUntilPointerLeaves else { return }
+        guard MenuBarInteractionPolicy.allowsHoverReveal(
+            enabled: hoverRevealEnabled,
+            isApplyingLayout: store.isInteractionBusy,
+            isShowingContextMenu: isShowingContextMenu,
+            isSuppressed: hoverRevealSuppressedUntilPointerLeaves
+        ) else { return }
         guard atMenuBar != pointerIsAtMenuBar else { return }
         pointerIsAtMenuBar = atMenuBar
         guard atMenuBar, let button = statusItem.button else { return }
@@ -170,13 +179,14 @@ final class StatusBarController: NSObject {
             menuProvider().popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
             return
         }
+        guard !store.isInteractionBusy else { return }
         guard let button = statusItem.button else { return }
         storeControlItemFrame(for: button)
         panelController.toggle(relativeTo: button)
     }
 
     func showPanel() {
-        guard let button = statusItem.button else { return }
+        guard !store.isInteractionBusy, let button = statusItem.button else { return }
         storeControlItemFrame(for: button)
         panelController.show(relativeTo: button)
     }
@@ -184,7 +194,7 @@ final class StatusBarController: NSObject {
     func updateLocalization() {
         statusItem.button?.toolTip = language.text("status.tooltip")
         statusItem.button?.setAccessibilityLabel(language.text("status.accessibility"))
-        statusItem.button?.image = Self.statusBarImage(isExpanded: panelController.isVisible, language: language)
+        statusItem.button?.image = Self.statusBarImage(language: language)
         panelController.updateLocalization()
     }
 
@@ -271,18 +281,15 @@ final class StatusBarController: NSObject {
     }
 
     private var hoverRevealEnabled: Bool {
-        let defaults = UserDefaults.standard
-        return defaults.object(forKey: "hoverRevealEnabled") == nil || defaults.bool(forKey: "hoverRevealEnabled")
+        UserDefaults.standard.bool(forKey: "hoverRevealEnabled")
     }
 
-    private static func statusBarImage(isExpanded: Bool, language: AppLanguageController) -> NSImage? {
-        let names = isExpanded
-            ? ["rectangle.stack.fill", "rectangle.3.group.fill", "chevron.up"]
-            : ["rectangle.stack", "rectangle.3.group", "chevron.down"]
+    private static func statusBarImage(language: AppLanguageController) -> NSImage? {
+        let names = ["rectangle.stack", "rectangle.3.group", "chevron.down"]
         guard let image = names.lazy.compactMap({
             NSImage(
                 systemSymbolName: $0,
-                accessibilityDescription: isExpanded ? language.text("status.collapse") : language.text("status.expand")
+                accessibilityDescription: language.text("status.expand")
             )
         }).first else { return nil }
         let configured = image.withSymbolConfiguration(

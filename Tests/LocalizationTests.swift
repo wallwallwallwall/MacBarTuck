@@ -74,7 +74,13 @@ private enum LocalizationTests {
             "menu.quit",
             "onboarding.welcome.title",
             "panel.empty",
-            "items.footer.count"
+            "items.footer.count",
+            "items.visibility.temporary",
+            "items.retuck_temporary",
+            "panel.retuck",
+            "panel.temporary.help",
+            "preferences.hover.help",
+            "store.activation.retuck_progress"
         ] {
             try expect(zh[key] != nil && en[key] != nil, "Missing required localization key: \(key)")
         }

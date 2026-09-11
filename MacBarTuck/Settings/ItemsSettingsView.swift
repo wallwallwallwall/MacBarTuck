@@ -34,6 +34,10 @@ struct ItemsSettingsView: View {
                     .buttonStyle(.borderless).frame(width: 28, height: 28)
                     .help(language.text("items.rescan")).accessibilityLabel(language.text("items.rescan"))
                 Menu {
+                    Button(language.text("items.retuck_temporary", store.temporarilyVisibleItems.count)) {
+                        store.retuckTemporarilyVisibleItems()
+                    }
+                    .disabled(store.temporarilyVisibleItems.isEmpty)
                     Button(language.text("items.all_automatic")) { store.resetRulesToAutomatic() }
                         .disabled(store.items.isEmpty)
                     Button(language.text("items.show_all")) { store.setLayoutManagementEnabled(false) }

@@ -42,8 +42,9 @@ enum RefreshIsolationTests {
         try await Task.sleep(for: .milliseconds(500))
         guard operations == 0 else { throw NSError(domain: "RefreshIsolation", code: 3) }
         store.applyLayout()
-        try await Task.sleep(for: .milliseconds(800))
-        guard operations == 1, hideCompletions.count == 1 else { throw NSError(domain: "RefreshIsolation", code: 4) }
+        guard await waitUntil({ operations == 1 && hideCompletions.count == 1 }) else {
+            throw NSError(domain: "RefreshIsolation", code: 4)
+        }
         for _ in 0..<20 { store.refresh(source: .externalChange) }
         guard store.items.count == 1, operations == 1 else { throw NSError(domain: "RefreshIsolation", code: 5) }
         hideCompletions[0](0)
@@ -55,12 +56,21 @@ enum RefreshIsolationTests {
         try await Task.sleep(for: .milliseconds(500))
         guard operations == 1, !store.isHiddenSectionActive else { throw NSError(domain: "RefreshIsolation", code: 7) }
         store.applyLayout()
-        try await Task.sleep(for: .milliseconds(800))
-        guard hideCompletions.count == 2 else { throw NSError(domain: "RefreshIsolation", code: 8) }
+        guard await waitUntil({ hideCompletions.count == 2 }) else {
+            throw NSError(domain: "RefreshIsolation", code: 8)
+        }
         store.setLayoutManagementEnabled(false)
         hideCompletions[1](1)
         try await Task.sleep(for: .milliseconds(1200))
         guard !store.layoutManagementEnabled, !store.isHiddenSectionActive else { throw NSError(domain: "RefreshIsolation", code: 9) }
         print("RefreshIsolationTests: 10 passed")
+    }
+
+    private static func waitUntil(_ condition: () -> Bool) async -> Bool {
+        for _ in 0..<40 {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return condition()
     }
 }

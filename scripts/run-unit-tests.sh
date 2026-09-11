@@ -14,6 +14,7 @@ for source in \
     "$ROOT/MacBarTuck/Core/MenuBarGeometry.swift" \
     "$ROOT/MacBarTuck/Core/MenuItemSafetyPolicy.swift" \
     "$ROOT/MacBarTuck/Core/MenuItemVisibility.swift" \
+    "$ROOT/MacBarTuck/Core/MenuBarInteractionPolicy.swift" \
     "$ROOT/MacBarTuck/Core/PreviewSelectionPolicy.swift" \
     "$ROOT/MacBarTuck/Core/OverflowPolicy.swift"
 do

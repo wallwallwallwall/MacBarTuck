@@ -20,6 +20,7 @@
 "preferences.menubar.section" = "菜单栏";
 "preferences.notch" = "自动避让刘海";
 "preferences.hover" = "悬停时展开";
+"preferences.hover.help" = "默认关闭；开启后移入菜单栏可展开托盘，布局调整期间会自动暂停。";
 "preferences.application.section" = "应用";
 "preferences.dock" = "在程序坞中显示 MacBarTuck";
 "preferences.login" = "登录时打开 MacBarTuck";
@@ -71,6 +72,7 @@
 "items.rescan" = "重新扫描";
 "items.all_automatic" = "全部设为自动";
 "items.show_all" = "全部显示";
+"items.retuck_temporary" = "重新收纳临时显示项（%d）";
 "items.more" = "更多操作";
 "items.recording_required" = "需要屏幕录制权限";
 "items.view_permissions" = "查看权限";
@@ -96,6 +98,7 @@
 "items.visibility.failed" = "收起失败";
 "items.visibility.pending" = "待收起";
 "items.visibility.disabled" = "尚未启用";
+"items.visibility.temporary" = "临时显示";
 
 "onboarding.step.welcome" = "欢迎";
 "onboarding.step.permissions" = "系统权限";
@@ -116,6 +119,8 @@
 "panel.help" = "MacBarTuck 托盘";
 "panel.empty" = "没有已收起的项目";
 "panel.not_hidden" = "尚未成功收起";
+"panel.retuck" = "重新收纳";
+"panel.temporary.help" = "此项目已临时显示在菜单栏；使用完后可统一重新收纳";
 "preview.safe" = "安全预览";
 "preview.no_status_item" = "不创建菜单栏项目";
 "preview.panel_location" = "托盘会在当前操作的屏幕、菜单栏下方展开";
@@ -162,6 +167,7 @@
 "store.activation.failed" = "无法激活 %@。";
 "store.activation.context_failed" = "无法打开 %@ 的右键菜单。";
 "store.activation.reveal_failed" = "无法临时显示 %@。";
+"store.activation.retuck_progress" = "正在重新收纳临时显示项…";
 
 "item.menu_bar_item" = "菜单栏项目";
 "item.screen_recording" = "屏幕录制";

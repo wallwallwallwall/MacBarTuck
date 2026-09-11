@@ -32,8 +32,9 @@ private enum MenuBarRuntimeTests {
         try expect(scanner.windowSignature().count == 1,
                    "Published owned IDs must not trigger rescans.")
         try separatorStates()
+        try interactionPolicy()
         try permissionRequests()
-        print("MenuBarRuntimeTests: 17 passed")
+        print("MenuBarRuntimeTests: 25 passed")
     }
 
     private static func separatorStates() throws {
@@ -50,6 +51,73 @@ private enum MenuBarRuntimeTests {
         try expect(length() == 3840, "Collapse must cover the widest attached screen.")
         try expect(length(widths: [8000]) == 10000, "Collapse must respect the status-item size limit.")
         try expect(length(widths: [.nan, .infinity, -10]) == 3456, "Invalid display widths must be ignored.")
+    }
+
+    private static func interactionPolicy() throws {
+        try expect(
+            MenuBarInteractionPolicy.activationPresentation(
+                didRevealItem: false,
+                isManaged: true,
+                layoutEnabled: true
+            ) == .leaveLayoutUnchanged,
+            "Direct activation must never start a menu bar layout transaction."
+        )
+        try expect(
+            MenuBarInteractionPolicy.activationPresentation(
+                didRevealItem: true,
+                isManaged: true,
+                layoutEnabled: true
+            ) == .keepVisibleUntilRetucked,
+            "A revealed managed item must remain visible until an explicit retuck."
+        )
+        try expect(
+            MenuBarInteractionPolicy.activationPresentation(
+                didRevealItem: true,
+                isManaged: false,
+                layoutEnabled: true
+            ) == .leaveLayoutUnchanged,
+            "Unmanaged items must not be tracked as temporarily revealed."
+        )
+        try expect(
+            MenuBarInteractionPolicy.allowsHoverReveal(
+                enabled: true,
+                isApplyingLayout: false,
+                isShowingContextMenu: false,
+                isSuppressed: false
+            ),
+            "Hover reveal should remain available when explicitly enabled and idle."
+        )
+        try expect(
+            !MenuBarInteractionPolicy.allowsHoverReveal(
+                enabled: true,
+                isApplyingLayout: true,
+                isShowingContextMenu: false,
+                isSuppressed: false
+            ),
+            "Hover reveal must be blocked while the real menu bar is moving."
+        )
+        try expect(
+            !MenuBarInteractionPolicy.allowsHoverReveal(
+                enabled: true,
+                isApplyingLayout: false,
+                isShowingContextMenu: true,
+                isSuppressed: false
+            ),
+            "Hover reveal must not cover a context menu."
+        )
+        try expect(
+            !MenuBarInteractionPolicy.allowsHoverReveal(
+                enabled: false,
+                isApplyingLayout: false,
+                isShowingContextMenu: false,
+                isSuppressed: false
+            ),
+            "Hover reveal must stay off by default."
+        )
+        try expect(
+            !MenuBarInteractionPolicy.allowsAutomaticLayout(hasTemporarilyVisibleItems: true),
+            "Background discovery must not retuck an item the user is still using."
+        )
     }
 
     private static func permissionRequests() throws {

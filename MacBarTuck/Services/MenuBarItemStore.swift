@@ -17,6 +17,7 @@ final class MenuBarItemStore: ObservableObject {
     @Published private(set) var displays: [DisplaySnapshot] = []
     @Published private(set) var automaticAvoidanceEnabled = true
     @Published private(set) var requiresScreenRecording = false
+    @Published private(set) var temporarilyVisibleItemIDs = Set<String>()
     private(set) var isHiddenSectionActive = false
     let isUIPreviewMode: Bool
 
@@ -32,17 +33,6 @@ final class MenuBarItemStore: ObservableObject {
     private let layoutManager: MenuBarLayoutManager
     private var ownedStatusWindowIDs: Set<CGWindowID> = []
     private var controlItemFrame: CGRect?
-    private var rehideWorkItem: DispatchWorkItem?
-    private var menuTrackingBeginObserver: NSObjectProtocol?
-    private var menuTrackingEndObserver: NSObjectProtocol?
-    private var menuDismissMonitor: Any?
-    private var transientDismissCheck: DispatchWorkItem?
-    private var pendingRehideItem: MenuBarItem?
-    // NSMenu can nest tracking sessions (for example, a submenu opened from
-    // a status-item menu). Keep a depth instead of a Boolean so an inner
-    // didEndTracking notification cannot make us rehide while the parent
-    // menu is still interactive.
-    private var menuTrackingDepth = 0
     private var layoutWorkItem: DispatchWorkItem?
     private var layoutStartWorkItem: DispatchWorkItem?
     private var layoutStartGeneration = 0
@@ -89,30 +79,6 @@ final class MenuBarItemStore: ObservableObject {
         layoutManagementEnabled = layoutManager.isEnabled
         automaticAvoidanceEnabled = preferences.automaticAvoidanceEnabled
         displays = DisplaySnapshotProvider.snapshots()
-        menuTrackingBeginObserver = NotificationCenter.default.addObserver(
-            forName: NSMenu.didBeginTrackingNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.menuTrackingDepth += 1 }
-        }
-        menuTrackingEndObserver = NotificationCenter.default.addObserver(
-            forName: NSMenu.didEndTrackingNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                self.menuTrackingDepth = max(0, self.menuTrackingDepth - 1)
-                guard self.menuTrackingDepth == 0 else { return }
-                if let item = self.pendingRehideItem,
-                   self.hasVisibleTransientWindow(for: item) {
-                    self.scheduleTransientDismissCheck(for: item)
-                } else {
-                    self.rehidePendingItem()
-                }
-            }
-        }
     }
 
     deinit {
@@ -122,10 +88,6 @@ final class MenuBarItemStore: ObservableObject {
         layoutStartWorkItem?.cancel()
         automaticLayoutWorkItem?.cancel()
         captureTask?.cancel()
-        transientDismissCheck?.cancel()
-        if let menuTrackingBeginObserver { NotificationCenter.default.removeObserver(menuTrackingBeginObserver) }
-        if let menuTrackingEndObserver { NotificationCenter.default.removeObserver(menuTrackingEndObserver) }
-        if let menuDismissMonitor { NSEvent.removeMonitor(menuDismissMonitor) }
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
     }
@@ -144,10 +106,26 @@ final class MenuBarItemStore: ObservableObject {
     /// Rule selection is intent, not evidence that a window was hidden.
     var overflowItems: [MenuBarItem] {
         return items
-            .filter { $0.visibility == .hidden && !$0.isAlwaysVisibleSystemItem }
+            .filter {
+                ($0.visibility == .hidden || temporarilyVisibleItemIDs.contains($0.id)) &&
+                    !$0.isAlwaysVisibleSystemItem
+            }
+    }
+
+    var temporarilyVisibleItems: [MenuBarItem] {
+        items.filter { temporarilyVisibleItemIDs.contains($0.id) }
+    }
+
+    var isInteractionBusy: Bool {
+        isApplyingLayout || isRestoringLayout || activatingItemID != nil || isTerminating
+    }
+
+    func isTemporarilyVisible(_ item: MenuBarItem) -> Bool {
+        temporarilyVisibleItemIDs.contains(item.id)
     }
 
     func visibilityDescription(for item: MenuBarItem) -> String {
+        if isTemporarilyVisible(item) { return language.text("items.visibility.temporary") }
         switch item.visibility {
         case .hidden: return language.text("items.visibility.hidden")
         case .partial: return language.text("items.visibility.partial")
@@ -168,7 +146,15 @@ final class MenuBarItemStore: ObservableObject {
             return (CGWindowID(number), frame)
         }, uniquingKeysWith: { first, _ in first })
         for item in items { item.updateVisibility(displayBounds: displays.map(\.frame), currentFrames: frames) }
+        reconcileTemporarilyVisibleItems()
         objectWillChange.send()
+    }
+
+    private func reconcileTemporarilyVisibleItems() {
+        let currentIDs = Set(items.map(\.id))
+        let managedIDs = Set(items.filter(\.isSelected).map(\.id))
+        let visibleIDs = Set(items.filter { $0.visibility != .hidden }.map(\.id))
+        temporarilyVisibleItemIDs.formIntersection(currentIDs.intersection(managedIDs).intersection(visibleIDs))
     }
 
     private func isOffscreen(_ item: MenuBarItem) -> Bool {
@@ -226,7 +212,7 @@ final class MenuBarItemStore: ObservableObject {
             return
         }
         guard !isTerminating else { return }
-        guard !isApplyingLayout, !isRestoringLayout, activatingItemID == nil, pendingRehideItem == nil else {
+        guard !isApplyingLayout, !isRestoringLayout, activatingItemID == nil else {
             refreshAgain = true
             DiagnosticLog.shared.record("refresh.deferred")
             return
@@ -277,6 +263,7 @@ final class MenuBarItemStore: ObservableObject {
         displays = DisplaySnapshotProvider.snapshots()
         for item in items { item.updateVisibility(displayBounds: displays.map(\.frame)) }
         recomputeManagedSelection()
+        reconcileTemporarilyVisibleItems()
         preferences.saveKnownItems(knownBefore.union(currentIDs))
         preferences.saveKnownWindowIDs(knownWindowIDsBefore.union(currentWindowIDs))
         if !preferences.didApplyDefaultLayout, !scanned.isEmpty {
@@ -346,8 +333,9 @@ final class MenuBarItemStore: ObservableObject {
         recomputeManagedSelection()
 
         if item.isSelected, layoutManagementEnabled {
-            applyLayout()
+            scheduleLayoutRetry(after: 0.3)
         } else if wasManaged, layoutManagementEnabled {
+            temporarilyVisibleItemIDs.remove(item.id)
             restoreItems([item])
         }
     }
@@ -476,6 +464,7 @@ final class MenuBarItemStore: ObservableObject {
             item.isSelected = !item.isAlwaysVisibleSystemItem && managedIDs.contains(item.id)
         }
         preferences.saveSelected(Set(items.filter(\.isSelected).map(\.id)))
+        temporarilyVisibleItemIDs.formIntersection(Set(items.filter(\.isSelected).map(\.id)))
         isReadyForManagedLayout = selectedItems.allSatisfy(\.hasUsableDisplayIcon)
         objectWillChange.send()
         onLayoutStateChanged?()
@@ -577,7 +566,7 @@ final class MenuBarItemStore: ObservableObject {
             automaticLayoutSuspended = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in self?.applyLayout() }
         } else {
-            cancelPendingRehide()
+            temporarilyVisibleItemIDs.removeAll()
             isHiddenSectionActive = false
             automaticLayoutWorkItem?.cancel()
             restoreLayout()
@@ -586,6 +575,7 @@ final class MenuBarItemStore: ObservableObject {
 
     private func scheduleAutomaticLayoutIfNeeded() {
         guard !automaticLayoutSuspended, !isTerminating, !isRestoringLayout, preferences.hasCompletedOnboarding,
+              MenuBarInteractionPolicy.allowsAutomaticLayout(hasTemporarilyVisibleItems: !temporarilyVisibleItemIDs.isEmpty),
               layoutManagementEnabled,
               !isApplyingLayout,
               !selectedItems.isEmpty,
@@ -607,8 +597,11 @@ final class MenuBarItemStore: ObservableObject {
             return
         }
         guard layoutManagementEnabled, !selectedItems.isEmpty else { return }
-        guard !isTerminating, !isRestoringLayout, activatingItemID == nil, pendingRehideItem == nil else { return }
+        guard !isTerminating, !isRestoringLayout, activatingItemID == nil else { return }
         if automatic && automaticLayoutSuspended { return }
+        if automatic && !MenuBarInteractionPolicy.allowsAutomaticLayout(
+            hasTemporarilyVisibleItems: !temporarilyVisibleItemIDs.isEmpty
+        ) { return }
         permissions.refresh()
         guard permissions.isReady else {
             layoutOperationMessage = language.text("store.permission.not_ready")
@@ -695,6 +688,13 @@ final class MenuBarItemStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
+    func retuckTemporarilyVisibleItems() {
+        guard layoutManagementEnabled, !temporarilyVisibleItemIDs.isEmpty else { return }
+        DiagnosticLog.shared.record("activation.retuck_requested", ["items": temporarilyVisibleItemIDs.count])
+        layoutOperationMessage = language.text("store.activation.retuck_progress")
+        applyLayout()
+    }
+
     private func cancelLayoutWork() {
         layoutWorkItem?.cancel()
         layoutWorkItem = nil
@@ -722,6 +722,7 @@ final class MenuBarItemStore: ObservableObject {
             return
         }
         cancelLayoutWork()
+        temporarilyVisibleItemIDs.removeAll()
         isHiddenSectionActive = false
         isRestoringLayout = true
         onLayoutStateChanged?()
@@ -748,6 +749,7 @@ final class MenuBarItemStore: ObservableObject {
     func restoreAllAndDisable() {
         if isUIPreviewMode {
             layoutManagementEnabled = false
+            temporarilyVisibleItemIDs.removeAll()
             layoutOperationMessage = language.text("store.preview.reset")
             for item in items where !item.isAlwaysVisibleSystemItem {
                 item.rule = .automatic
@@ -774,7 +776,6 @@ final class MenuBarItemStore: ObservableObject {
         isTerminating = true
         monitorTimer?.invalidate()
         refreshWorkItem?.cancel()
-        cancelPendingRehide()
         captureGeneration += 1
         captureTask?.cancel()
         captureTask = nil
@@ -819,6 +820,8 @@ final class MenuBarItemStore: ObservableObject {
             )
         }
         for item in items { item.visibility = item.isSelected ? .hidden : .visible }
+        temporarilyVisibleItemIDs = ["preview-window"]
+        items.first(where: { $0.id == "preview-window" })?.visibility = .visible
         layoutManagementEnabled = true
         automaticAvoidanceEnabled = true
         isReadyForManagedLayout = true
@@ -858,11 +861,10 @@ final class MenuBarItemStore: ObservableObject {
         }
         let item = logicalItem.activationTarget(on: display)
         guard activatingItemID == nil else { return }
-        cancelPendingRehide()
         activatingItemID = item.id
         lastActivationError = nil
         if mouseButton == .left, activator.activateDirectly(item) {
-            rehideAfterNextUserClick(item)
+            DiagnosticLog.shared.record("activation.direct", ["route": 1])
             finishActivation()
             return
         }
@@ -879,7 +881,7 @@ final class MenuBarItemStore: ObservableObject {
                                          message: self.language.text("store.activation.failed", item.tooltip(for: self.language.selectedLanguage)))
                     return
                 }
-                self.rehideAfterNextUserClick(item)
+                DiagnosticLog.shared.record("activation.direct", ["route": 2])
                 self.finishActivation()
             }
             return
@@ -889,14 +891,14 @@ final class MenuBarItemStore: ObservableObject {
         // this expensive full-tree walk and use the direct per-process path
         // after their short reveal.
         if mouseButton == .left, item.axElement != nil, activateUsingFreshAccessibility(item) {
-            rehideAfterNextUserClick(item)
+            DiagnosticLog.shared.record("activation.direct", ["route": 3])
             finishActivation()
             return
         }
         if mouseButton == .left,
            item.windowID == nil,
            activator.activateViaAccessibilityHitTest(item) {
-            rehideAfterNextUserClick(item)
+            DiagnosticLog.shared.record("activation.direct", ["route": 4])
             finishActivation()
             return
         }
@@ -910,13 +912,13 @@ final class MenuBarItemStore: ObservableObject {
                                          message: self.language.text("store.activation.context_failed", item.tooltip(for: self.language.selectedLanguage)))
                     return
                 }
+                DiagnosticLog.shared.record("activation.direct", ["route": 5])
                 self.finishActivation()
             }
             return
         }
-        // Preserve the real pointer across the complete reveal → click →
-        // rehide transaction. Each synthetic event can otherwise overwrite
-        // WindowServer's logical location before the next phase starts.
+        // Preserve the real pointer across the reveal and click. The item is
+        // intentionally left visible until the user explicitly retucks it.
         activateByTemporarilyRevealing(item, mouseButton: mouseButton, restoreCursorLocation: layoutManager.currentPointerLocation(), retryCount: retryCount)
     }
 
@@ -935,6 +937,7 @@ final class MenuBarItemStore: ObservableObject {
                                      message: self.language.text("store.activation.reveal_failed", item.tooltip(for: self.language.selectedLanguage)))
                 return
             }
+            self.preserveRevealedItem(item)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
                 guard let self else { return }
                 // Once the item is visible again, resolve the current
@@ -945,7 +948,7 @@ final class MenuBarItemStore: ObservableObject {
                    self.itemUsesAccessibility(item),
                    self.activator.activateDirectly(item)
                     || self.activator.activateViaAccessibilityHitTest(item) {
-                    self.rehideAfterNextUserClick(item)
+                    DiagnosticLog.shared.record("activation.temporary_activated", ["route": 1])
                     self.finishActivation()
                     return
                 }
@@ -953,12 +956,12 @@ final class MenuBarItemStore: ObservableObject {
                     guard let self else { return }
                     self.layoutManager.restorePointerLocation(restoreCursorLocation)
                     guard success else {
-                        self.layoutManager.rehide(item, restoreCursorLocation: restoreCursorLocation)
+                        DiagnosticLog.shared.record("activation.click_failed_visible", ["route": mouseButton == .right ? 2 : 1])
                         self.retryActivation(item, mouseButton: mouseButton, retryCount: retryCount,
                                              message: self.language.text("store.activation.failed", item.tooltip(for: self.language.selectedLanguage)))
                         return
                     }
-                    self.rehideAfterNextUserClick(item)
+                    DiagnosticLog.shared.record("activation.temporary_activated", ["route": mouseButton == .right ? 2 : 1])
                     self.finishActivation()
                 }
             }
@@ -983,131 +986,21 @@ final class MenuBarItemStore: ObservableObject {
 
     private func finishActivation() { activatingItemID = nil }
 
+    private func preserveRevealedItem(_ item: MenuBarItem) {
+        let presentation = MenuBarInteractionPolicy.activationPresentation(
+            didRevealItem: true,
+            isManaged: item.isSelected,
+            layoutEnabled: layoutManagementEnabled
+        )
+        guard presentation == .keepVisibleUntilRetucked else { return }
+        temporarilyVisibleItemIDs.insert(item.id)
+        items.first(where: { $0.id == item.id })?.visibility = .visible
+        DiagnosticLog.shared.record("activation.reveal_once", ["temporary": temporarilyVisibleItemIDs.count])
+        objectWillChange.send()
+    }
+
     private func itemUsesAccessibility(_ item: MenuBarItem) -> Bool {
         item.windowID == nil
     }
 
-    private func rehideAfterNextUserClick(_ item: MenuBarItem) {
-        guard layoutManagementEnabled, item.isSelected, !item.isAlwaysVisibleSystemItem else { return }
-        pendingRehideItem = item
-
-        // Popovers do not emit NSMenu tracking notifications. Install this
-        // monitor after the originating click has completed. While an NSMenu
-        // is tracking, menu-item clicks must be allowed to reach that menu;
-        // the persistent didEndTracking observer above performs the rehide
-        // after the menu has actually closed. Foreign-process menus are
-        // handled by the bounded window-presence check below.
-        if let menuDismissMonitor { NSEvent.removeMonitor(menuDismissMonitor) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            guard let self, self.pendingRehideItem != nil else { return }
-            self.menuDismissMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                Task { @MainActor in
-                    guard let self,
-                          let item = self.pendingRehideItem,
-                          self.menuTrackingDepth == 0 else { return }
-                    // Check after the click has had time to open or dismiss a
-                    // foreign-process menu. Never use the stale hardware
-                    // pointer location as the deciding signal: synthetic
-                    // activation events can leave it behind the menu item.
-                    self.scheduleTransientDismissCheck(for: item)
-                }
-            }
-        }
-
-        // Some Control Center modules use a popover instead of NSMenu and do
-        // not emit didEndTracking. Keep the item visible long enough for the
-        // popover to open, then use a bounded fallback to restore the layout.
-        rehideWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self, let item = self.pendingRehideItem else { return }
-            if self.hasVisibleTransientWindow(for: item) {
-                self.scheduleTransientDismissCheck(for: item)
-            } else {
-                self.rehidePendingItem()
-            }
-        }
-        rehideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: workItem)
-    }
-
-    private func rehidePendingItem() {
-        guard let item = pendingRehideItem else { return }
-        pendingRehideItem = nil
-        rehideWorkItem?.cancel()
-        rehideWorkItem = nil
-        transientDismissCheck?.cancel()
-        transientDismissCheck = nil
-        if let menuDismissMonitor {
-            NSEvent.removeMonitor(menuDismissMonitor)
-            self.menuDismissMonitor = nil
-        }
-        guard !isApplyingLayout, !isRestoringLayout, layoutManagementEnabled, !isTerminating else { return }
-        isApplyingLayout = true
-        layoutStartGeneration += 1
-        let generation = layoutStartGeneration
-        onLayoutOperationStateChanged?(true)
-        layoutManager.rehide(item, restoreCursorLocation: nil) { [weak self] moved in
-            guard let self, self.layoutStartGeneration == generation else { return }
-            self.onLayoutOperationStateChanged?(false)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                guard self.layoutStartGeneration == generation else { return }
-                self.isApplyingLayout = false
-                if !moved { self.automaticLayoutSuspended = true }
-                DiagnosticLog.shared.record("layout.rehide", ["transaction": generation, "moved": moved ? 1 : 0])
-                self.scheduleRefresh(after: 0.2, reason: "rehide settled", source: .observation)
-            }
-        }
-    }
-
-    private func cancelPendingRehide() {
-        rehideWorkItem?.cancel()
-        rehideWorkItem = nil
-        transientDismissCheck?.cancel()
-        transientDismissCheck = nil
-        if let menuDismissMonitor {
-            NSEvent.removeMonitor(menuDismissMonitor)
-            self.menuDismissMonitor = nil
-        }
-        pendingRehideItem = nil
-    }
-
-    /// Control Center's menus are foreign-process windows and never produce
-    /// our NSMenu tracking notifications. Poll only after a user click rather
-    /// than while idle, so a menu item click is never followed by an immediate
-    /// rehide that dismisses the menu itself.
-    private func hasVisibleTransientWindow(for item: MenuBarItem) -> Bool {
-        guard let ownerPID = item.ownerPID else { return false }
-        let protectedOwner = item.bundleIdentifier == "Control Center" ||
-            NSRunningApplication(processIdentifier: ownerPID)?.bundleIdentifier == "com.apple.controlcenter"
-        let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
-        return windows.contains { info in
-            guard let windowPID = MenuBarWindowServer.integer(kCGWindowOwnerPID as String, in: info),
-                  let layer = MenuBarWindowServer.integer(kCGWindowLayer as String, in: info),
-                  let bounds = MenuBarWindowServer.bounds(in: info) else { return false }
-            let windowOwner = (info[kCGWindowOwnerName as String] as? String) ?? ""
-            let sameOwner = pid_t(windowPID) == ownerPID || (protectedOwner && windowOwner == "Control Center")
-            guard sameOwner else { return false }
-            let width = bounds.width
-            let height = bounds.height
-            guard layer > 25 || (layer == 25 && height > 40) else { return false }
-            return width > 4 && height > 4
-        }
-    }
-
-    private func scheduleTransientDismissCheck(for item: MenuBarItem, attempt: Int = 0) {
-        guard pendingRehideItem?.id == item.id else { return }
-        transientDismissCheck?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self, self.pendingRehideItem?.id == item.id else { return }
-            if self.hasVisibleTransientWindow(for: item) {
-                // Keep a low-duty check alive for menus that remain open
-                // beyond the normal eight-second safety window.
-                self.scheduleTransientDismissCheck(for: item, attempt: min(attempt + 1, 80))
-            } else {
-                self.rehidePendingItem()
-            }
-        }
-        transientDismissCheck = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: workItem)
-    }
 }

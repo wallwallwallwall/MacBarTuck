@@ -20,6 +20,7 @@
 "preferences.menubar.section" = "Menu Bar";
 "preferences.notch" = "Avoid the Notch Automatically";
 "preferences.hover" = "Reveal on Hover";
+"preferences.hover.help" = "Off by default. When enabled, moving into the menu bar opens the tray; it pauses during layout changes.";
 "preferences.application.section" = "Application";
 "preferences.dock" = "Show MacBarTuck in the Dock";
 "preferences.login" = "Open MacBarTuck at Login";
@@ -71,6 +72,7 @@
 "items.rescan" = "Scan Again";
 "items.all_automatic" = "Set All to Automatic";
 "items.show_all" = "Show All";
+"items.retuck_temporary" = "Retuck Temporarily Visible Items (%d)";
 "items.more" = "More Actions";
 "items.recording_required" = "Screen Recording Permission Required";
 "items.view_permissions" = "View Permissions";
@@ -96,6 +98,7 @@
 "items.visibility.failed" = "Tuck Failed";
 "items.visibility.pending" = "Waiting to Tuck";
 "items.visibility.disabled" = "Not Enabled";
+"items.visibility.temporary" = "Temporarily Visible";
 
 "onboarding.step.welcome" = "Welcome";
 "onboarding.step.permissions" = "System Permissions";
@@ -116,6 +119,8 @@
 "panel.help" = "MacBarTuck Tray";
 "panel.empty" = "No Tucked Items";
 "panel.not_hidden" = "Items Have Not Been Tucked Yet";
+"panel.retuck" = "Retuck";
+"panel.temporary.help" = "This item is temporarily visible in the menu bar. Retuck visible items when finished.";
 "preview.safe" = "Safe Preview";
 "preview.no_status_item" = "No Menu Bar Items Created";
 "preview.panel_location" = "The tray opens below the menu bar on the display you are using";
@@ -162,6 +167,7 @@
 "store.activation.failed" = "Unable to activate %@.";
 "store.activation.context_failed" = "Unable to open the context menu for %@.";
 "store.activation.reveal_failed" = "Unable to reveal %@ temporarily.";
+"store.activation.retuck_progress" = "Retucking temporarily visible items…";
 
 "item.menu_bar_item" = "Menu Bar Item";
 "item.screen_recording" = "Screen Recording";

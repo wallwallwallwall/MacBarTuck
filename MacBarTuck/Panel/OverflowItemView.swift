@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OverflowItemView: View {
     let item: MenuBarItem
+    let isTemporarilyVisible: Bool
     let action: () -> Void
     let rightAction: () -> Void
 
@@ -30,13 +31,25 @@ struct OverflowItemView: View {
             }
         }
         .buttonStyle(OverflowItemButtonStyle(reduceMotion: reduceMotion))
+        .overlay(alignment: .bottomTrailing) {
+            if isTemporarilyVisible {
+                Circle()
+                    .fill(MacBarTuckTheme.accentStrong)
+                    .frame(width: 5, height: 5)
+                    .overlay(Circle().stroke(MacBarTuckTheme.deepSurface, lineWidth: 1))
+                    .offset(x: -5, y: -4)
+                    .allowsHitTesting(false)
+            }
+        }
         .overlay { RightClickCaptureView(action: rightAction) }
         .frame(width: OverflowPanelView.itemSlotWidth, height: 32)
         .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .onHover { hovering in
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) { isHovering = hovering }
         }
-        .help(item.tooltip(for: language.selectedLanguage))
+        .help(isTemporarilyVisible
+              ? "\(item.tooltip(for: language.selectedLanguage)) · \(language.text("panel.temporary.help"))"
+              : item.tooltip(for: language.selectedLanguage))
         .accessibilityLabel(item.tooltip(for: language.selectedLanguage))
     }
 }
@@ -72,10 +85,9 @@ private struct OverflowItemButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.92 : 1)
-            .opacity(configuration.isPressed ? 0.72 : 1)
+            .opacity(configuration.isPressed ? 0.68 : 1)
             .animation(
-                reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.72),
+                reduceMotion ? nil : .easeOut(duration: 0.08),
                 value: configuration.isPressed
             )
     }

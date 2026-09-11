@@ -9,8 +9,8 @@ struct SettingsView: View {
     @ObservedObject private var permissions: PermissionManager
     private let restartApplication: () -> Void
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
-    @AppStorage("hoverRevealEnabled") private var hoverRevealEnabled = true
-    @State private var previewHoverEnabled = true
+    @AppStorage("hoverRevealEnabled") private var hoverRevealEnabled = false
+    @State private var previewHoverEnabled = false
     @State private var selectedTab: SettingsTab
 
     init(store: MenuBarItemStore, dockVisibility: DockVisibilityController,
@@ -62,12 +62,11 @@ struct SettingsView: View {
         .frame(minWidth: 760, minHeight: 560)
         .preferredColorScheme(.dark)
         .onAppear { refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refresh() }
-        .task {
-            while !Task.isCancelled {
-                permissions.refresh()
-                try? await Task.sleep(for: .seconds(2))
-            }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshApplicationState()
+        }
+        .onChange(of: selectedTab) { _, tab in
+            if tab == .status { permissions.refresh() }
         }
         .onChange(of: permissions.effectiveAccessKey) { _, _ in store.refresh() }
         .alert("MacBarTuck", isPresented: Binding(
@@ -79,9 +78,13 @@ struct SettingsView: View {
     }
 
     private func refresh() {
+        refreshApplicationState()
+        store.refresh()
+    }
+
+    private func refreshApplicationState() {
         permissions.refresh()
         launchAtLogin.refresh()
-        store.refresh()
     }
 
     @ViewBuilder private var content: some View {

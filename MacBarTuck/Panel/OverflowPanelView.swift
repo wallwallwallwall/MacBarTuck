@@ -14,6 +14,7 @@ struct OverflowPanelView: View {
     @ObservedObject var presentation: OverflowPanelPresentationState
     let onActivate: (MenuBarItem) -> Void
     let onRightActivate: (MenuBarItem) -> Void
+    let onRetuck: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var language: AppLanguageController
@@ -55,12 +56,38 @@ struct OverflowPanelView: View {
                             .padding(.horizontal, 10)
                     }
                     ForEach(store.overflowItems) { item in
-                        OverflowItemView(item: item, action: { onActivate(item) }, rightAction: { onRightActivate(item) })
+                        OverflowItemView(
+                            item: item,
+                            isTemporarilyVisible: store.isTemporarilyVisible(item),
+                            action: { onActivate(item) },
+                            rightAction: { onRightActivate(item) }
+                        )
                     }
                 }
                 .padding(.vertical, 3)
             }
             .scrollBounceBehavior(.basedOnSize)
+
+            if !store.temporarilyVisibleItems.isEmpty {
+                Rectangle()
+                    .fill(MacBarTuckTheme.strongStroke)
+                    .frame(width: 1, height: 23)
+
+                Button(action: onRetuck) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.down.to.line")
+                        Text("\(store.temporarilyVisibleItems.count)")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(MacBarTuckTheme.accentStrong)
+                    .frame(minWidth: 30, minHeight: 30)
+                    .padding(.horizontal, 3)
+                    .background(MacBarTuckTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help(language.text("panel.retuck"))
+                .accessibilityLabel(language.text("panel.retuck"))
+            }
         }
         .padding(.horizontal, 7)
         .frame(height: Self.preferredHeight - 6)
@@ -76,19 +103,10 @@ struct OverflowPanelView: View {
 
     private var panelTransition: AnyTransition {
         if reduceMotion { return .opacity }
-        return .asymmetric(
-            insertion: .opacity
-                .combined(with: .scale(scale: 0.92, anchor: .top))
-                .combined(with: .offset(y: -5)),
-            removal: .opacity
-                .combined(with: .scale(scale: 0.96, anchor: .top))
-                .combined(with: .offset(y: -3))
-        )
+        return .opacity.combined(with: .offset(y: -2))
     }
 
     private var panelAnimation: Animation {
-        reduceMotion
-            ? .easeOut(duration: 0.12)
-            : .spring(response: 0.3, dampingFraction: 0.82, blendDuration: 0.08)
+        .easeOut(duration: reduceMotion ? 0.08 : 0.12)
     }
 }

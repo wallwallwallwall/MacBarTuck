@@ -12,7 +12,6 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
     private var screenObserver: NSObjectProtocol?
     private var closeWorkItem: DispatchWorkItem?
     private weak var anchorButton: NSStatusBarButton?
-    var onVisibilityChanged: ((Bool) -> Void)?
     // Synthetic status-item clicks can generate a mouse-moved notification at
     // the menu bar. Tell the owner before dispatching the activation so its
     // hover revealer cannot immediately reopen this panel over the menu that
@@ -44,6 +43,9 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
                 self?.onItemActivation?()
                 self?.close()
                 self?.store.activate(item, mouseButton: .right)
+            }, onRetuck: { [weak self] in
+                self?.close()
+                self?.store.retuckTemporarilyVisibleItems()
             })
         })
         panel.orderOut(nil)
@@ -75,10 +77,9 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         guard positionPanel(relativeTo: button) else { return }
         presentation.isPresented = false
         panel.orderFrontRegardless()
-        onVisibilityChanged?(true)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            withAnimation(self.reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.3, dampingFraction: 0.82)) {
+            withAnimation(.easeOut(duration: self.reduceMotion ? 0.08 : 0.12)) {
                 self.presentation.isPresented = true
             }
         }
@@ -110,8 +111,7 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         guard panel.isVisible else { return }
         if let globalEventMonitor { NSEvent.removeMonitor(globalEventMonitor); self.globalEventMonitor = nil }
         if let localEventMonitor { NSEvent.removeMonitor(localEventMonitor); self.localEventMonitor = nil }
-        onVisibilityChanged?(false)
-        withAnimation(reduceMotion ? .easeOut(duration: 0.08) : .easeInOut(duration: 0.14)) {
+        withAnimation(.easeOut(duration: reduceMotion ? 0.06 : 0.10)) {
             presentation.isPresented = false
         }
         let workItem = DispatchWorkItem { [weak self] in
@@ -119,7 +119,7 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
             self?.closeWorkItem = nil
         }
         closeWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.08 : 0.15), execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.06 : 0.11), execute: workItem)
     }
 
     func windowDidResignKey(_ notification: Notification) { close() }
@@ -139,7 +139,8 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         let usableFrame = usableFrame(for: screen)
         guard !usableFrame.isNull, usableFrame.width > 0, usableFrame.height > 0 else { return false }
 
-        let desiredWidth = max(CGFloat(store.overflowItems.count) * OverflowPanelView.itemSlotWidth + 58, 154)
+        let retuckWidth: CGFloat = store.temporarilyVisibleItems.isEmpty ? 0 : 45
+        let desiredWidth = max(CGFloat(store.overflowItems.count) * OverflowPanelView.itemSlotWidth + 58 + retuckWidth, 154)
         let maximumWidth = max(96, min(720, usableFrame.width - 16))
         let width = min(desiredWidth, maximumWidth)
         let height = OverflowPanelView.preferredHeight

@@ -20,6 +20,7 @@ struct PreferencesSettingsView: View {
                         get: { store.automaticAvoidanceEnabled }, set: { store.setAutomaticAvoidanceEnabled($0) }
                     ))
                     Toggle(language.text("preferences.hover"), isOn: $hoverRevealEnabled)
+                        .help(language.text("preferences.hover.help"))
                 }
                 Section(language.text("preferences.application.section")) {
                     Toggle(language.text("preferences.dock"), isOn: Binding(
@@ -64,6 +65,11 @@ struct PreferencesSettingsView: View {
                     HStack {
                         Button(language.text("preferences.apply"), systemImage: "checkmark") { store.applyLayout() }
                             .disabled(!store.layoutManagementEnabled || store.selectedItems.isEmpty)
+                        if !store.temporarilyVisibleItems.isEmpty {
+                            Button(language.text("panel.retuck"), systemImage: "arrow.down.to.line") {
+                                store.retuckTemporarilyVisibleItems()
+                            }
+                        }
                         Button(language.text("preferences.show_all"), systemImage: "arrow.uturn.backward") { store.setLayoutManagementEnabled(false) }
                             .disabled(!store.layoutManagementEnabled)
                     }
