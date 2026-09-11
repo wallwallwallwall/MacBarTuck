@@ -56,8 +56,8 @@ struct SettingsView: View {
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .font(.system(size: 13))
-        .tint(BarTuckTheme.accent)
-        .background(BarTuckTheme.canvas)
+        .tint(MacBarTuckTheme.accent)
+        .background(MacBarTuckTheme.canvas)
         .frame(minWidth: 760, minHeight: 560)
         .preferredColorScheme(.dark)
         .onAppear { refresh() }
@@ -69,7 +69,7 @@ struct SettingsView: View {
             }
         }
         .onChange(of: permissions.effectiveAccessKey) { _, _ in store.refresh() }
-        .alert("BarTuck", isPresented: Binding(
+        .alert("MacBarTuck", isPresented: Binding(
             get: { store.lastActivationError != nil },
             set: { if !$0 { store.lastActivationError = nil } }
         )) {

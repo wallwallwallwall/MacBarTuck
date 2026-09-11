@@ -160,7 +160,7 @@ final class MenuBarCaptureService {
         var pointers = ids.map { UnsafeRawPointer(bitPattern: UInt($0)) }
         return pointers.withUnsafeMutableBufferPointer { buffer in
             guard let array = CFArrayCreate(kCFAllocatorDefault, buffer.baseAddress, buffer.count, nil) else { return nil }
-            return BarTuckCreateWindowListImage(
+            return MacBarTuckCreateWindowListImage(
                 .null,
                 array,
                 [.boundsIgnoreFraming, .bestResolution]
@@ -173,7 +173,7 @@ final class MenuBarCaptureService {
 /// WindowServer still exports it. Keeping the compatibility shim in one place
 /// lets the main capture path remain on ScreenCaptureKit.
 @_silgen_name("CGWindowListCreateImageFromArray")
-private func BarTuckCreateWindowListImage(
+private func MacBarTuckCreateWindowListImage(
     _ bounds: CGRect,
     _ windows: CFArray,
     _ options: CGWindowImageOption

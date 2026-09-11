@@ -25,7 +25,7 @@ struct OverflowItemView: View {
             .padding(4)
             .background {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isHovering ? BarTuckTheme.accent.opacity(0.16) : Color.clear)
+                    .fill(isHovering ? MacBarTuckTheme.accent.opacity(0.16) : Color.clear)
             }
         }
         .buttonStyle(OverflowItemButtonStyle(reduceMotion: reduceMotion))

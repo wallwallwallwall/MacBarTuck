@@ -46,20 +46,20 @@ private enum AppAccessTests {
         let menus = AppMenuController(dockVisibility: visibility, showSettings: { settings += 1 },
             showTray: { tray += 1 }, hideApplication: { hidden += 1 }, quitApplication: { quits += 1 })
         let status = menus.makeStatusMenu()
-        try expect(status.item(withTitle: "退出 BarTuck") != nil, "The status menu must always offer Quit.")
+        try expect(status.item(withTitle: "退出 MacBarTuck") != nil, "The status menu must always offer Quit.")
         try expect(status.item(withTitle: "设置…")?.keyEquivalent == ",", "Settings must have the standard keyboard shortcut.")
         try expect(status.item(withTitle: "在程序坞中显示")?.state == .on, "Menu state must match the preference.")
         status.performActionForItem(at: status.indexOfItem(withTitle: "设置…"))
         status.performActionForItem(at: status.indexOfItem(withTitle: "打开托盘"))
         status.performActionForItem(at: status.indexOfItem(withTitle: "隐藏窗口"))
-        status.performActionForItem(at: status.indexOfItem(withTitle: "退出 BarTuck"))
+        status.performActionForItem(at: status.indexOfItem(withTitle: "退出 MacBarTuck"))
         try expect(settings == 1 && tray == 1 && hidden == 1 && quits == 1, "Status actions must reach their distinct handlers.")
         status.performActionForItem(at: status.indexOfItem(withTitle: "在程序坞中显示"))
         try expect(!visibility.showsDockIcon, "The status menu must toggle Dock visibility.")
         let hiddenMenu = menus.makeStatusMenu()
         try expect(hiddenMenu.item(withTitle: "在程序坞中显示")?.state == .off,
                    "Reopening the menu must reflect a change made elsewhere.")
-        try expect(hiddenMenu.item(withTitle: "设置…") != nil && hiddenMenu.item(withTitle: "退出 BarTuck") != nil,
+        try expect(hiddenMenu.item(withTitle: "设置…") != nil && hiddenMenu.item(withTitle: "退出 MacBarTuck") != nil,
                    "Hiding the Dock icon must preserve Settings and Quit access.")
 
         visibility.setDockIconVisible(true)

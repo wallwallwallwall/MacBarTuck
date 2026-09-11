@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum BarTuckTheme {
+enum MacBarTuckTheme {
     static let canvas = Color(nsColor: .windowBackgroundColor)
     static let chrome = Color(nsColor: .windowBackgroundColor)
     static let surface = Color(nsColor: .controlBackgroundColor)
@@ -16,7 +16,7 @@ enum BarTuckTheme {
     static let warning = Color(red: 1.00, green: 0.43, blue: 0.38)
 }
 
-struct BarTuckSurface<Content: View>: View {
+struct MacBarTuckSurface<Content: View>: View {
     private let padding: CGFloat
     private let content: Content
 
@@ -28,16 +28,16 @@ struct BarTuckSurface<Content: View>: View {
     var body: some View {
         content
             .padding(padding)
-            .background(BarTuckTheme.surface)
+            .background(MacBarTuckTheme.surface)
             .overlay {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(BarTuckTheme.stroke, lineWidth: 1)
+                    .stroke(MacBarTuckTheme.stroke, lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
-struct BarTuckSectionTitle: View {
+struct MacBarTuckSectionTitle: View {
     let title: String
     let detail: String?
 
@@ -50,18 +50,18 @@ struct BarTuckSectionTitle: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(title)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(BarTuckTheme.primaryText)
+                .foregroundStyle(MacBarTuckTheme.primaryText)
             if let detail {
                 Text(detail)
                     .font(.system(size: 11))
-                    .foregroundStyle(BarTuckTheme.secondaryText)
+                    .foregroundStyle(MacBarTuckTheme.secondaryText)
             }
             Spacer()
         }
     }
 }
 
-struct BarTuckStatusPill: View {
+struct MacBarTuckStatusPill: View {
     let title: String
     let color: Color
     var systemImage: String?
@@ -92,11 +92,11 @@ struct MenuItemIconView: View {
                     .renderingMode(item.usesTemplateIcon ? .template : .original)
                     .resizable()
                     .scaledToFit()
-                    .foregroundStyle(item.usesTemplateIcon && colorScheme == .dark ? BarTuckTheme.primaryText : Color.primary)
+                    .foregroundStyle(item.usesTemplateIcon && colorScheme == .dark ? MacBarTuckTheme.primaryText : Color.primary)
             } else {
                 Image(systemName: item.fallbackSymbolName)
                     .font(.system(size: size * 0.72, weight: .semibold))
-                    .foregroundStyle(BarTuckTheme.primaryText)
+                    .foregroundStyle(MacBarTuckTheme.primaryText)
             }
         }
         .frame(width: size, height: size)
@@ -122,9 +122,9 @@ extension MenuItemRule {
 
     var tint: Color {
         switch self {
-        case .automatic: BarTuckTheme.accent
-        case .alwaysVisible: BarTuckTheme.success
-        case .alwaysHidden: BarTuckTheme.warning
+        case .automatic: MacBarTuckTheme.accent
+        case .alwaysVisible: MacBarTuckTheme.success
+        case .alwaysHidden: MacBarTuckTheme.warning
         }
     }
 }

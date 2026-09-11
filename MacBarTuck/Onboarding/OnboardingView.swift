@@ -76,8 +76,8 @@ struct OnboardingView: View {
             .padding(.horizontal, 24).frame(height: 56)
         }
         .font(.system(size: 13))
-        .tint(BarTuckTheme.accent)
-        .background(BarTuckTheme.canvas)
+        .tint(MacBarTuckTheme.accent)
+        .background(MacBarTuckTheme.canvas)
         .frame(minWidth: 680, minHeight: 500)
         .preferredColorScheme(.dark)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: step)
@@ -100,7 +100,7 @@ struct OnboardingView: View {
         case .welcome:
             VStack(spacing: 20) {
                 Image(nsImage: NSApp.applicationIconImage).resizable().scaledToFit().frame(width: 80, height: 80)
-                Text("欢迎使用 BarTuck").font(.system(size: 22, weight: .medium))
+                Text("欢迎使用 MacBarTuck").font(.system(size: 22, weight: .medium))
             }
         case .permissions:
             VStack(alignment: .leading, spacing: 24) {
@@ -116,7 +116,7 @@ struct OnboardingView: View {
         case .customize:
             VStack(alignment: .leading, spacing: 26) {
                 Text("偏好设置").font(.system(size: 20, weight: .medium))
-                Toggle("登录时打开 BarTuck", isOn: Binding(
+                Toggle("登录时打开 MacBarTuck", isOn: Binding(
                     get: { store.isUIPreviewMode ? previewLoginEnabled : launchAtLogin.isEnabled },
                     set: { value in
                         if store.isUIPreviewMode { previewLoginEnabled = value }

@@ -36,13 +36,13 @@ struct OverflowPanelView: View {
         HStack(spacing: 5) {
             Image(systemName: "rectangle.stack.fill")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(BarTuckTheme.accentStrong)
+                .foregroundStyle(MacBarTuckTheme.accentStrong)
                 .frame(width: 30, height: 30)
-                .background(BarTuckTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .help("BarTuck 托盘")
+                .background(MacBarTuckTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .help("MacBarTuck 托盘")
 
             Rectangle()
-                .fill(BarTuckTheme.strongStroke)
+                .fill(MacBarTuckTheme.strongStroke)
                 .frame(width: 1, height: 23)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -50,7 +50,7 @@ struct OverflowPanelView: View {
                     if store.overflowItems.isEmpty {
                         Text(store.selectedItems.isEmpty ? "没有已收起的项目" : "尚未成功收起")
                             .font(.system(size: 11))
-                            .foregroundStyle(BarTuckTheme.secondaryText)
+                            .foregroundStyle(MacBarTuckTheme.secondaryText)
                             .padding(.horizontal, 10)
                     }
                     ForEach(store.overflowItems) { item in
@@ -64,10 +64,10 @@ struct OverflowPanelView: View {
         .padding(.horizontal, 7)
         .frame(height: Self.preferredHeight - 6)
         .background(.ultraThinMaterial)
-        .background(BarTuckTheme.deepSurface.opacity(0.90))
+        .background(MacBarTuckTheme.deepSurface.opacity(0.90))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(BarTuckTheme.accent.opacity(0.42), lineWidth: 1)
+                .stroke(MacBarTuckTheme.accent.opacity(0.42), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .padding(3)

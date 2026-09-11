@@ -21,7 +21,7 @@ arrow.move(to: NSPoint(x: 570, y: 275))
 arrow.line(to: NSPoint(x: 525, y: 235))
 arrow.stroke()
 
-let title = "安装 BarTuck"
+let title = "安装 MacBarTuck"
 let subtitle = "将应用拖入 Applications 文件夹"
 let titleAttributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 30, weight: .semibold), .foregroundColor: NSColor(calibratedWhite: 0.95, alpha: 1)]
 let subtitleAttributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: NSColor(calibratedWhite: 0.66, alpha: 1)]

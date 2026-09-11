@@ -22,8 +22,8 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         self.store = store
         panel = NSPanel(contentRect: .init(x: 0, y: 0, width: 260, height: OverflowPanelView.preferredHeight), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
-        panel.title = "BarTuck 托盘"
-        panel.setAccessibilityLabel("BarTuck 托盘")
+        panel.title = "MacBarTuck 托盘"
+        panel.setAccessibilityLabel("MacBarTuck 托盘")
         panel.level = .statusBar
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
@@ -124,7 +124,7 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     private func positionPanel(relativeTo button: NSStatusBarButton) -> Bool {
-        guard let buttonFrame = button.barTuckScreenFrame,
+        guard let buttonFrame = button.macBarTuckScreenFrame,
               let screen = screen(containing: CGPoint(x: buttonFrame.midX, y: buttonFrame.midY)) else { return false }
         let usableFrame = usableFrame(for: screen)
         guard !usableFrame.isNull, usableFrame.width > 0, usableFrame.height > 0 else { return false }

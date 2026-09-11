@@ -1,8 +1,8 @@
-# BarTuck
+# MacBarTuck
 
-BarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Apple Silicon Mac。它会根据菜单栏安全宽度自动收纳可能被刘海遮挡的项目，也允许为每个项目设置“自动、常显、收纳”三态规则。
+MacBarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Apple Silicon Mac。它会根据菜单栏安全宽度自动收纳可能被刘海遮挡的项目，也允许为每个项目设置“自动、常显、收纳”三态规则。
 
-![BarTuck 菜单项](docs/screenshots/items.png)
+![MacBarTuck 菜单项](docs/screenshots/items.png)
 
 ## 界面
 
@@ -32,8 +32,8 @@ BarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Appl
 
 ## 安装
 
-1. 打开 `BarTuck-0.1.7.dmg`。
-2. 将 `BarTuck.app` 拖入 `Applications`。
+1. 打开 `MacBarTuck-0.1.8.dmg`。
+2. 将 `MacBarTuck.app` 拖入 `Applications`。
 3. 首次打开时按引导授予辅助功能和屏幕录制权限。
 4. 若 macOS 提示应用来自未识别开发者，请在 Finder 中右键应用并选择“打开”。当前开源构建使用临时签名，尚未经过 Apple 公证。
 
@@ -42,15 +42,15 @@ BarTuck 是一款开源的 macOS 菜单栏收纳工具，面向带刘海的 Appl
 ## 使用
 
 - 左键点击菜单栏的层叠图标：展开或收起托盘。
-- 右键或 Control 点按层叠图标：打开菜单，可进入设置、调整程序坞显示或退出 BarTuck。
-- 程序坞默认显示 BarTuck。右键菜单提供设置和隐藏程序坞图标，macOS 同时提供标准的隐藏、显示和退出操作。
+- 右键或 Control 点按层叠图标：打开菜单，可进入设置、调整程序坞显示或退出 MacBarTuck。
+- 程序坞默认显示 MacBarTuck。右键菜单提供设置和隐藏程序坞图标，macOS 同时提供标准的隐藏、显示和退出操作。
 - 在“通用 → 应用”设置程序坞图标是否显示；选择会保留到下次启动。隐藏窗口、隐藏程序坞图标均不会退出进程。
 - 菜单项：搜索项目，用“显示方式”菜单选择自动、始终显示或收起。
 - 顶部“启用收纳”开关控制是否移动菜单项。“全部显示”会暂停收纳并恢复原图标。
 - 通用：设置自动避让、悬停展开和登录启动；重置设置会先请求确认。
 - 权限与显示器：查看授权状态及当前连接的显示器。
 
-macOS 的菜单栏项目顺序是全局状态，不支持为每块屏幕保留完全独立的排列。BarTuck 因此使用已连接刘海屏中最小的安全宽度计算自动规则，同时把托盘显示在用户当前操作的屏幕。
+macOS 的菜单栏项目顺序是全局状态，不支持为每块屏幕保留完全独立的排列。MacBarTuck 因此使用已连接刘海屏中最小的安全宽度计算自动规则，同时把托盘显示在用户当前操作的屏幕。
 
 ## 从源码构建
 
@@ -58,8 +58,8 @@ macOS 的菜单栏项目顺序是全局状态，不支持为每块屏幕保留�
 
 ```bash
 xcodebuild \
-  -project BarTuck.xcodeproj \
-  -scheme BarTuck \
+  -project MacBarTuck.xcodeproj \
+  -scheme MacBarTuck \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath work/DerivedData-Debug \
@@ -87,17 +87,19 @@ xcodebuild \
 ./scripts/create-dmg.sh
 ```
 
-产物位于 `dist/BarTuck-0.1.7.dmg`，并附带 SHA-256 文件。
+产物位于 `dist/MacBarTuck-0.1.8.dmg`，并附带 SHA-256 文件。
 
-默认仍为临时签名。已配置 Developer ID 的发布者可以通过 `BARTUCK_SIGNING_IDENTITY` 指定已有身份；脚本不会创建证书、修改信任设置或执行公证。详见 [权限状态与发布签名](docs/permissions.md)。
+默认仍为临时签名。已配置 Developer ID 的发布者可以通过 `MACBARTUCK_SIGNING_IDENTITY` 指定已有身份；脚本仍兼容旧的 `BARTUCK_SIGNING_IDENTITY`。它不会创建证书、修改信任设置或执行公证。详见 [权限状态与发布签名](docs/permissions.md)。
 
 ## 隐私与安全
 
-完整说明见 [PRIVACY.md](PRIVACY.md)。BarTuck 不包含网络请求、用户账号或分析 SDK。菜单栏图标截图仅保留在进程内存中；规则、开关和已发现项目标识保存在本机 `UserDefaults`。
+完整说明见 [PRIVACY.md](PRIVACY.md)。MacBarTuck 不包含网络请求、用户账号或分析 SDK。菜单栏图标截图仅保留在进程内存中；规则、开关和已发现项目标识保存在本机 `UserDefaults`。
 
 0.1.6 增加本地轮换日志，可在“通用 → 诊断”查看或导出。记录刷新来源、布局事务、窗口 ID、数值结果和错误码，不记录图标图片、窗口标题或应用内容。[刷新抖动分析](docs/layout-stability.md) 记录本次问题及验证边界。
 
 0.1.7 将固定的系统时钟设为保留项，避免阻塞其他项目的移动；列表新增实际状态，托盘仅展示已确认隐藏的项目。“收起”是期望规则，不代表操作已成功。双屏副本有一份仍显示时会标为“部分屏幕可见”，窗口失效时标为“待确认”。
+
+0.1.8 将产品名称更新为 MacBarTuck。Bundle ID、用户设置、诊断日志目录和状态栏定位标识保持不变，用于兼容已安装的 BarTuck 版本。
 
 录屏、麦克风、摄像头等 macOS 隐私指示器会被强制保持可见，不能设置为收纳。
 
@@ -105,7 +107,7 @@ xcodebuild \
 
 - 当前版本未使用 Developer ID 签名，也未经过 Apple 公证。
 - macOS 更新可能改变菜单栏窗口结构，需要后续适配。
-- 个别应用会动态重建菜单栏项目，BarTuck 会周期性重新发现，但短时间内可能显示备用图标。
+- 个别应用会动态重建菜单栏项目，MacBarTuck 会周期性重新发现，但短时间内可能显示备用图标。
 - 与其他菜单栏整理工具同时运行会产生布局冲突。
 - 0.1.0 的已授权双屏实测发现分隔项越界和本应用镜像误识别；0.1.1 已修正相关代码并增加回归测试，但真实收纳、点击与双屏托盘仍需在修复版上复测。详见 [测试记录](docs/runtime-qa.md)。
 - 临时签名的应用在更新代码后可能需要重新授予系统权限。macOS 15、27 和显示器热插拔尚未完成实机验收。
@@ -114,7 +116,7 @@ xcodebuild \
 
 ## 开源来源
 
-BarTuck 基于 MIT 许可的 [OverflowBar](https://github.com/EvanProgramming/OverflowBar) 开发，固定来源提交为 `a5f1588f8353123d2906aa18810a74e0816d1603`。原版权和许可证保留在 [LICENSE](LICENSE) 与 [NOTICE](NOTICE) 中。
+MacBarTuck 基于 MIT 许可的 [OverflowBar](https://github.com/EvanProgramming/OverflowBar) 开发，固定来源提交为 `a5f1588f8353123d2906aa18810a74e0816d1603`。原版权和许可证保留在 [LICENSE](LICENSE) 与 [NOTICE](NOTICE) 中。
 
 欢迎通过 [CONTRIBUTING.md](CONTRIBUTING.md) 中的流程参与开发。
 

@@ -377,7 +377,7 @@ final class MenuBarLayoutManager {
         let item = requestedItem.activationTarget(on: targetDisplay)
         // Capture before injecting the synthetic drag. At this point the
         // WindowServer location still matches the real hardware pointer,
-        // including when the user clicked inside BarTuck itself.
+        // including when the user clicked inside MacBarTuck itself.
         let physicalPointerLocation = restoreCursorLocation ?? CGEvent(source: nil)?.location
         guard let itemWindowID = item.windowID, let ownerPID = item.ownerPID,
               let itemFrame = currentFrame(windowID: itemWindowID),
@@ -549,8 +549,8 @@ final class MenuBarLayoutManager {
            let control = records.first(where: { $0.id == controlStatusItemWindowID }) {
             return (control.id, control.frame)
         }
-        if let barTuck = records.first(where: { $0.title == "BarTuckControlItem" }) {
-            return (barTuck.id, barTuck.frame)
+        if let macBarTuck = records.first(where: { $0.title == "BarTuckControlItem" }) {
+            return (macBarTuck.id, macBarTuck.frame)
         }
         return records
             .filter { $0.pid == getpid() && $0.frame.width <= 100 && $0.frame.height > 1 }

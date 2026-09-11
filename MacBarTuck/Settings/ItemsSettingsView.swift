@@ -27,7 +27,7 @@ struct ItemsSettingsView: View {
                         .help("清除搜索").accessibilityLabel("清除搜索")
                 }
                 .padding(.horizontal, 8).frame(width: 260, height: 28)
-                .background(BarTuckTheme.deepSurface, in: RoundedRectangle(cornerRadius: 5))
+                .background(MacBarTuckTheme.deepSurface, in: RoundedRectangle(cornerRadius: 5))
                 Spacer()
                 Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless).frame(width: 28, height: 28)

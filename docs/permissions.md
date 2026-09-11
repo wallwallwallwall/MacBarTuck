@@ -21,6 +21,6 @@ Apple 的 [TN2206](https://developer.apple.com/library/archive/technotes/tn2206/
 
 默认打包命令保留临时签名，适合本地测试。正式发布应使用发行者已有的 Developer ID 身份，在后续版本中持续使用同一签名身份和 Bundle ID，并单独完成 Apple 公证。
 
-`scripts/create-dmg.sh` 支持 `BARTUCK_SIGNING_IDENTITY` 环境变量。未设置时仍使用临时签名；设置为已有身份后使用 hardened runtime 和时间戳。此路径没有在本机执行或验收，因为没有提供签名身份。脚本不会查询、创建或导入证书，也不自动公证。
+`scripts/create-dmg.sh` 支持 `MACBARTUCK_SIGNING_IDENTITY` 环境变量，并兼容旧的 `BARTUCK_SIGNING_IDENTITY`。未设置时仍使用临时签名；设置为已有身份后使用 hardened runtime 和时间戳。此路径没有在本机执行或验收，因为没有提供签名身份。脚本不会查询、创建或导入证书，也不自动公证。
 
 14 项权限回归检查覆盖部分授权、已授权不再请求、撤销、历史与当前状态隔离、后台只读检查、接受请求但需重启及生效后清除提示。共享状态和界面检查不代表真实收纳/点击已通过；该边界仍见 runtime-qa.md。

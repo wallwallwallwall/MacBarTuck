@@ -59,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.startMonitoring()
         // Startup must be observational only. Restoring offscreen system
         // items uses synthetic Command-drag events and can change WindowServer
-        // pointer state before the user has interacted with BarTuck.
+        // pointer state before the user has interacted with MacBarTuck.
         if preferences.hasCompletedOnboarding {
             store.refresh(source: .startup)
         } else {
@@ -82,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = store.isUIPreviewMode ? "BarTuck · 界面预览" : "BarTuck"
+            window.title = store.isUIPreviewMode ? "MacBarTuck · 界面预览" : "MacBarTuck"
             window.titlebarAppearsTransparent = false
             window.titleVisibility = .visible
             window.isMovableByWindowBackground = true
@@ -118,13 +118,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Wait for normal termination (including layout restoration). Pass
         // the bundle path as an argument, never as shell source text.
         helper.arguments = ["-c", "for attempt in 1 2 3 4 5 6 7 8 9 10; do if ! /bin/kill -0 \"$2\" 2>/dev/null; then exec /usr/bin/open -n \"$1\" --args --show-settings; fi; /bin/sleep 1; done; exit 1",
-                            "BarTuck-restart", Bundle.main.bundleURL.path, String(getpid())]
+                            "MacBarTuck-restart", Bundle.main.bundleURL.path, String(getpid())]
         do {
             try helper.run()
             restartScheduled = true
             NSApp.terminate(nil)
         } catch {
-            store.lastActivationError = "无法重新启动 BarTuck：\(error.localizedDescription)"
+            store.lastActivationError = "无法重新启动 MacBarTuck：\(error.localizedDescription)"
         }
     }
 
@@ -138,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = store.isUIPreviewMode ? "设置 BarTuck · 界面预览" : "设置 BarTuck"
+            window.title = store.isUIPreviewMode ? "设置 MacBarTuck · 界面预览" : "设置 MacBarTuck"
             window.titleVisibility = .visible
             window.titlebarAppearsTransparent = false
             window.isMovableByWindowBackground = true
@@ -176,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "BarTuck 托盘预览"
+            window.title = "MacBarTuck 托盘预览"
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.isMovableByWindowBackground = true

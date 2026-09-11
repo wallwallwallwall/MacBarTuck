@@ -10,34 +10,34 @@ struct OverflowPanelPreviewView: View {
 
     var body: some View {
         ZStack {
-            BarTuckTheme.canvas.ignoresSafeArea()
+            MacBarTuckTheme.canvas.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 HStack(spacing: 9) {
                     Circle()
-                        .fill(BarTuckTheme.warning)
+                        .fill(MacBarTuckTheme.warning)
                         .frame(width: 7, height: 7)
                     Circle()
-                        .fill(BarTuckTheme.success)
+                        .fill(MacBarTuckTheme.success)
                         .frame(width: 7, height: 7)
                     Text("安全预览")
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(BarTuckTheme.secondaryText)
+                        .foregroundStyle(MacBarTuckTheme.secondaryText)
                     Spacer()
                     Label("不创建菜单栏项目", systemImage: "shield.checkered")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(BarTuckTheme.success)
+                        .foregroundStyle(MacBarTuckTheme.success)
                 }
                 .padding(.horizontal, 18)
                 .frame(height: 48)
-                .background(BarTuckTheme.chrome)
+                .background(MacBarTuckTheme.chrome)
 
                 Spacer()
 
                 VStack(spacing: 11) {
                     Text("托盘会在当前操作的屏幕、菜单栏下方展开")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(BarTuckTheme.secondaryText)
+                        .foregroundStyle(MacBarTuckTheme.secondaryText)
 
                     OverflowPanelView(
                         store: store,

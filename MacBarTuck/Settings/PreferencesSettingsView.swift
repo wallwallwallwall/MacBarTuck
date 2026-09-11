@@ -21,14 +21,14 @@ struct PreferencesSettingsView: View {
                     Toggle("悬停时展开", isOn: $hoverRevealEnabled)
                 }
                 Section("应用") {
-                    Toggle("在程序坞中显示 BarTuck", isOn: Binding(
+                    Toggle("在程序坞中显示 MacBarTuck", isOn: Binding(
                         get: { dockVisibility.showsDockIcon },
                         set: { dockVisibility.setDockIconVisible($0) }
                     ))
                     if let error = dockVisibility.errorMessage {
                         Text(error).foregroundStyle(.red).font(.caption)
                     }
-                    Toggle("登录时打开 BarTuck", isOn: Binding(
+                    Toggle("登录时打开 MacBarTuck", isOn: Binding(
                         get: { store.isUIPreviewMode ? previewLoginEnabled : launchAtLogin.isEnabled },
                         set: { value in
                             if store.isUIPreviewMode { previewLoginEnabled = value }
@@ -80,10 +80,10 @@ struct PreferencesSettingsView: View {
             }
             Divider()
             HStack {
-                Text("BarTuck \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
+                Text("MacBarTuck \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("关于 BarTuck") { NSApp.orderFrontStandardAboutPanel(nil) }
+                Button("关于 MacBarTuck") { NSApp.orderFrontStandardAboutPanel(nil) }
                     .buttonStyle(.link)
                 Button("退出") { NSApp.terminate(nil) }.buttonStyle(.link)
             }
@@ -93,7 +93,7 @@ struct PreferencesSettingsView: View {
 
     private func exportDiagnostics() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "BarTuck-diagnostics.jsonl"
+        panel.nameFieldStringValue = "MacBarTuck-diagnostics.jsonl"
         panel.allowedContentTypes = [UTType(filenameExtension: "jsonl") ?? .plainText]
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }

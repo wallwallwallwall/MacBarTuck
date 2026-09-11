@@ -7,14 +7,14 @@ BUILD_DIR="$ROOT/.test-build"
 SOURCES=()
 
 for source in \
-    "$ROOT/BarTuck/Core/MenuItemRule.swift" \
-    "$ROOT/BarTuck/Core/MenuItemRuleCodec.swift" \
-    "$ROOT/BarTuck/Core/DisplayConstraint.swift" \
-    "$ROOT/BarTuck/Core/MenuBarGeometry.swift" \
-    "$ROOT/BarTuck/Core/MenuItemSafetyPolicy.swift" \
-    "$ROOT/BarTuck/Core/MenuItemVisibility.swift" \
-    "$ROOT/BarTuck/Core/PreviewSelectionPolicy.swift" \
-    "$ROOT/BarTuck/Core/OverflowPolicy.swift"
+    "$ROOT/MacBarTuck/Core/MenuItemRule.swift" \
+    "$ROOT/MacBarTuck/Core/MenuItemRuleCodec.swift" \
+    "$ROOT/MacBarTuck/Core/DisplayConstraint.swift" \
+    "$ROOT/MacBarTuck/Core/MenuBarGeometry.swift" \
+    "$ROOT/MacBarTuck/Core/MenuItemSafetyPolicy.swift" \
+    "$ROOT/MacBarTuck/Core/MenuItemVisibility.swift" \
+    "$ROOT/MacBarTuck/Core/PreviewSelectionPolicy.swift" \
+    "$ROOT/MacBarTuck/Core/OverflowPolicy.swift"
 do
     if [[ -f "$source" ]]; then
         SOURCES+=("$source")
@@ -35,40 +35,40 @@ swiftc \
 swiftc \
     -parse-as-library \
     "${SOURCES[@]}" \
-    "$ROOT/BarTuck/Models/MenuBarItem.swift" \
-    "$ROOT/BarTuck/Services/MenuBarWindowServer.swift" \
-    "$ROOT/BarTuck/Services/MenuBarScanner.swift" \
-    "$ROOT/BarTuck/Core/StatusItemLayoutPolicy.swift" \
-    "$ROOT/BarTuck/Services/PermissionManager.swift" \
+    "$ROOT/MacBarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarWindowServer.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarScanner.swift" \
+    "$ROOT/MacBarTuck/Core/StatusItemLayoutPolicy.swift" \
+    "$ROOT/MacBarTuck/Services/PermissionManager.swift" \
     "$ROOT/Tests/MenuBarRuntimeTests.swift" \
     -o "$BUILD_DIR/MenuBarRuntimeTests"
 
 "$BUILD_DIR/MenuBarRuntimeTests"
 
 swiftc -parse-as-library "${SOURCES[@]}" \
-    "$ROOT/BarTuck/Models/MenuBarItem.swift" \
-    "$ROOT/BarTuck/Services/MenuBarWindowServer.swift" \
-    "$ROOT/BarTuck/Services/MenuBarScanner.swift" \
+    "$ROOT/MacBarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarWindowServer.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarScanner.swift" \
     "$ROOT/Tests/MenuBarIdentityTests.swift" \
-    "$ROOT/BarTuck/Services/MenuBarItemActivator.swift" \
-    "$ROOT/BarTuck/Services/MenuBarEventRelay.swift" \
-    "$ROOT/BarTuck/Services/PreferencesStore.swift" \
-    "$ROOT/BarTuck/Services/MenuBarCaptureService.swift" \
-    "$ROOT/BarTuck/Services/DiagnosticLog.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarItemActivator.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarEventRelay.swift" \
+    "$ROOT/MacBarTuck/Services/PreferencesStore.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarCaptureService.swift" \
+    "$ROOT/MacBarTuck/Services/DiagnosticLog.swift" \
     -o "$BUILD_DIR/MenuBarIdentityTests"
 "$BUILD_DIR/MenuBarIdentityTests"
 
 swiftc -parse-as-library "${SOURCES[@]}" \
-    "$ROOT/BarTuck/Models/MenuBarItem.swift" \
-    "$ROOT/BarTuck/Services/PreferencesStore.swift" \
-    "$ROOT/BarTuck/App/DockVisibilityController.swift" \
-    "$ROOT/BarTuck/App/AppMenuController.swift" \
+    "$ROOT/MacBarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/MacBarTuck/Services/PreferencesStore.swift" \
+    "$ROOT/MacBarTuck/App/DockVisibilityController.swift" \
+    "$ROOT/MacBarTuck/App/AppMenuController.swift" \
     "$ROOT/Tests/AppAccessTests.swift" \
     -o "$BUILD_DIR/AppAccessTests"
 "$BUILD_DIR/AppAccessTests"
 
 swiftc -parse-as-library \
-    "$ROOT/BarTuck/Services/PermissionManager.swift" \
+    "$ROOT/MacBarTuck/Services/PermissionManager.swift" \
     "$ROOT/Tests/PermissionStateTests.swift" \
     -o "$BUILD_DIR/PermissionStateTests"
 "$BUILD_DIR/PermissionStateTests"

@@ -1,16 +1,16 @@
-BarTuck 0.1.7 安装说明
+MacBarTuck 0.1.8 安装说明
 
-1. 将 BarTuck.app 拖入 Applications 文件夹。
-2. 在“应用程序”中打开 BarTuck。
+1. 将 MacBarTuck.app 拖入 Applications 文件夹。
+2. 在“应用程序”中打开 MacBarTuck。
 3. 按首次启动引导授予辅助功能和屏幕录制权限。
 4. 若 macOS 提示应用来自未识别开发者，请在 Finder 中右键应用并选择“打开”。
 
-BarTuck 仅支持 Apple Silicon（arm64）和 macOS 15.0 或更高版本。
+MacBarTuck 仅支持 Apple Silicon（arm64）和 macOS 15.0 或更高版本。
 请勿与 iBar、Bartender、Ice 等会移动菜单栏项目的工具同时运行。
 
 当前开源构建使用临时签名，尚未经过 Apple 公证。
 
 授权是否生效以窗口顶部及“权限与显示器”页为准。
-若系统开关已经打开但这里仍显示“未生效”，先点“重新启动 BarTuck”。
-仍未生效时，在两项系统权限中移除旧 BarTuck 条目，重新添加当前应用。
+若系统开关已经打开但这里仍显示“未生效”，先点“重新启动 MacBarTuck”。
+仍未生效时，在两项系统权限中移除旧的 BarTuck 或 MacBarTuck 条目，重新添加当前应用。
 “定位当前应用”可以找到正在运行的那份程序，避免误授权到旧备份。

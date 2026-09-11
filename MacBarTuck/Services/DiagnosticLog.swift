@@ -2,6 +2,7 @@ import Foundation
 import OSLog
 
 final class DiagnosticLog: @unchecked Sendable {
+    // Keep the legacy directory so upgrades retain diagnostic history.
     static let shared = DiagnosticLog(directory: FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Logs/BarTuck", isDirectory: true))
     let directory: URL

@@ -1,11 +1,11 @@
 # 开源参考
 
-核验日期：2026-09-10。读取 GitHub API、上游 README、源码和许可证；未安装或运行这些参考软件。上游宣称支持不等于 BarTuck 已验证支持。
+核验日期：2026-09-10。读取 GitHub API、上游 README、源码和许可证；未安装或运行这些参考软件。上游宣称支持不等于 MacBarTuck 已验证支持。
 
 ## 已采用
 
 - [OverflowBar](https://github.com/EvanProgramming/OverflowBar/tree/a5f1588f8353123d2906aa18810a74e0816d1603)，MIT，核验时最近推送为 2026-09-07。既有底层来源，保留原版权。核对发现首次录屏按钮只打开设置的问题也存在于该来源中，不能因为是上游实现就跳过测试。
-- [Hidden Bar 的状态栏控制器](https://github.com/dwarvesf/hidden/blob/0dde4b6882144309263ac465375971a5c39b492d/hidden/Features/StatusBar/StatusBarController.swift)，MIT，核验时最近推送为 2026-06-15。参考“移动前展开、结束后收起”和按最宽屏幕计算有界分隔项宽度的模式。BarTuck 保留自己的三态规则和托盘，宽度策略及许可记录见 `StatusItemLayoutPolicy`、`NOTICE`。
+- [Hidden Bar 的状态栏控制器](https://github.com/dwarvesf/hidden/blob/0dde4b6882144309263ac465375971a5c39b492d/hidden/Features/StatusBar/StatusBarController.swift)，MIT，核验时最近推送为 2026-06-15。参考“移动前展开、结束后收起”和按最宽屏幕计算有界分隔项宽度的模式。MacBarTuck 保留自己的三态规则和托盘，宽度策略及许可记录见 `StatusItemLayoutPolicy`、`NOTICE`。
 
 ## 仅参考功能设计
 

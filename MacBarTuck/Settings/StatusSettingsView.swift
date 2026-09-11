@@ -32,16 +32,16 @@ struct StatusSettingsView: View {
                 Section("开关已打开，但仍未生效") {
                     Text(permissions.screenRestartSuggested
                         ? "系统已接受录屏请求，当前进程尚未生效，请重新启动。"
-                        : "先重新启动 BarTuck，再检查两项状态是否变为“已生效”。")
+                        : "先重新启动 MacBarTuck，再检查两项状态是否变为“已生效”。")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                     HStack {
-                        Button("重新启动 BarTuck", action: restartApplication)
+                        Button("重新启动 MacBarTuck", action: restartApplication)
                         Button("定位当前应用") {
                             NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
                         }
                     }
                     if permissions.isAdHocSigned {
-                        Text("此版本使用临时签名。更新后，系统可能仍保留旧版本的授权开关。若重启后仍未生效，请在系统设置中移除旧的 BarTuck 条目，再添加当前应用并允许访问。")
+                        Text("此版本使用临时签名。更新后，系统可能仍保留旧版本的授权开关。若重启后仍未生效，请在系统设置中移除旧的 BarTuck 或 MacBarTuck 条目，再添加当前应用并允许访问。")
                             .font(.system(size: 12)).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }

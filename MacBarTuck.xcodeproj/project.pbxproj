@@ -1,0 +1,53 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXFileReference section */
+		A00000000000000000000001 /* MacBarTuck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacBarTuck.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A00000000000000000000016 /* Exceptions for "MacBarTuck" folder in "MacBarTuck" target */ = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Resources/Info.plist,); target = A00000000000000000000003 /* MacBarTuck */; };
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A00000000000000000000012 /* MacBarTuck */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (A00000000000000000000016 /* Exceptions for "MacBarTuck" folder in "MacBarTuck" target */,); explicitFileTypes = {}; explicitFolders = (); path = MacBarTuck; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000002 = {isa = PBXGroup; children = (A00000000000000000000012 /* MacBarTuck */, A00000000000000000000001 /* MacBarTuck.app */); sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000003 /* MacBarTuck */ = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000004; buildPhases = (A00000000000000000000005 /* Sources */, A00000000000000000000015 /* Resources */,); buildRules = (); dependencies = (); fileSystemSynchronizedGroups = (A00000000000000000000012 /* MacBarTuck */,); name = MacBarTuck; packageProductDependencies = (); productName = MacBarTuck; productReference = A00000000000000000000001 /* MacBarTuck.app */; productType = "com.apple.product-type.application"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000006 /* Project object */ = {isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1600; LastUpgradeCheck = 1600; TargetAttributes = { A00000000000000000000003 = { CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = A00000000000000000000007; compatibilityVersion = "Xcode 16.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = A00000000000000000000002; minimizedProjectReferenceProxies = 1; preferredProjectObjectVersion = 77; productRefGroup = A00000000000000000000002; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000003 /* MacBarTuck */,); };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A00000000000000000000015 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A00000000000000000000005 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000008 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; ARCHS = arm64; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; MACOSX_DEPLOYMENT_TARGET = 15.0; ONLY_ACTIVE_ARCH = NO; SDKROOT = macosx; SUPPORTED_PLATFORMS = macosx; SWIFT_VERSION = 5.0; }; name = Debug; };
+		A00000000000000000000009 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; ARCHS = arm64; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; MACOSX_DEPLOYMENT_TARGET = 15.0; ONLY_ACTIVE_ARCH = NO; SDKROOT = macosx; SUPPORTED_PLATFORMS = macosx; SWIFT_VERSION = 5.0; }; name = Release; };
+		A00000000000000000000010 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ARCHS = arm64; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = MacBarTuck/Resources/Info.plist; ONLY_ACTIVE_ARCH = NO; PRODUCT_BUNDLE_IDENTIFIER = com.bartuck.app; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = macosx; SWIFT_EMIT_LOC_STRINGS = YES; }; name = Debug; };
+		A00000000000000000000011 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ARCHS = arm64; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = MacBarTuck/Resources/Info.plist; ONLY_ACTIVE_ARCH = NO; PRODUCT_BUNDLE_IDENTIFIER = com.bartuck.app; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = macosx; SWIFT_EMIT_LOC_STRINGS = YES; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000004 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000010 /* Debug */, A00000000000000000000011 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A00000000000000000000007 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000008 /* Debug */, A00000000000000000000009 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000006 /* Project object */;
+}

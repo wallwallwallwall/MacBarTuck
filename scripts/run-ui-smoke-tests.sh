@@ -4,8 +4,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_ROOT="$ROOT/.test-build/ui-smoke"
-APP="${1:-$ROOT/work/DerivedData-Debug/Build/Products/Debug/BarTuck.app}"
-EXECUTABLE="$APP/Contents/MacOS/BarTuck"
+APP="${1:-$ROOT/work/DerivedData-Debug/Build/Products/Debug/MacBarTuck.app}"
+EXECUTABLE="$APP/Contents/MacOS/MacBarTuck"
 ACTIVE_PID=""
 RUN_DIR=""
 

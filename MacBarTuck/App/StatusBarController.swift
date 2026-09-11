@@ -20,6 +20,7 @@ final class StatusBarController: NSObject {
 
     init(store: MenuBarItemStore, menuProvider: @escaping () -> NSMenu) {
         let defaults = UserDefaults.standard
+        // Keep the legacy autosave names so upgrades retain menu bar positions.
         let arrowName = "BarTuckControlItem"
         let hiddenName = "BarTuckHiddenSection"
         // Keep the registration sequence used by the working 1.0.17 build.
@@ -49,7 +50,7 @@ final class StatusBarController: NSObject {
             self.updateHiddenSectionLength()
             // Do not synthesize Command-drag events during startup. Those
             // events alter WindowServer's global pointer state even when the
-            // user has not interacted with BarTuck. Layout is applied by
+            // user has not interacted with MacBarTuck. Layout is applied by
             // an explicit user action (or when onboarding is completed).
         }
         store.onLayoutStateChanged = { [weak self] in self?.updateHiddenSectionLength() }
@@ -65,8 +66,8 @@ final class StatusBarController: NSObject {
         }
         button?.image = Self.statusBarImage(isExpanded: false)
         button?.imagePosition = .imageOnly
-        button?.toolTip = "打开 BarTuck 托盘；右键显示菜单"
-        button?.setAccessibilityLabel("BarTuck 菜单栏托盘")
+        button?.toolTip = "打开 MacBarTuck 托盘；右键显示菜单"
+        button?.setAccessibilityLabel("MacBarTuck 菜单栏托盘")
         button?.target = self
         button?.action = #selector(togglePanel)
         button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -179,7 +180,7 @@ final class StatusBarController: NSObject {
 
     private func storeControlItemFrame(for button: NSStatusBarButton) {
         publishStatusItemWindowIDs()
-        if let frame = button.barTuckScreenFrame { store.updateControlItemFrame(frame) }
+        if let frame = button.macBarTuckScreenFrame { store.updateControlItemFrame(frame) }
     }
 
     private func publishStatusItemWindowIDs() {
@@ -271,7 +272,7 @@ final class StatusBarController: NSObject {
         guard let image = names.lazy.compactMap({
             NSImage(
                 systemSymbolName: $0,
-                accessibilityDescription: isExpanded ? "收起 BarTuck" : "展开 BarTuck"
+                accessibilityDescription: isExpanded ? "收起 MacBarTuck" : "展开 MacBarTuck"
             )
         }).first else { return nil }
         let configured = image.withSymbolConfiguration(
@@ -283,7 +284,7 @@ final class StatusBarController: NSObject {
 }
 
 extension NSStatusBarButton {
-    var barTuckScreenFrame: CGRect? {
+    var macBarTuckScreenFrame: CGRect? {
         let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
         let matchedWindow = windows.first(where: {
             guard MenuBarWindowServer.isStatusItemLayer($0) else { return false }
