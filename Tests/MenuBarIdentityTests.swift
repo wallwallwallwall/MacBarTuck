@@ -26,6 +26,10 @@ private enum MenuBarIdentityTests {
         try panelPositioning()
         try captureIdentity()
         try iconPresentation()
+        try inputSourcePresentation()
+        try applicationIdentityResolution()
+        try macOS27AccessibilityDiscoveryBoundaries()
+        try accessibilityRestorationFrame()
         try stableMirrorIdentity()
         try actualVisibility()
         print("MenuBarIdentityTests: \(checks) passed")
@@ -241,6 +245,157 @@ private enum MenuBarIdentityTests {
         )
         try expect(fallback.displayImage === captured,
                    "A third-party tray item without an application icon must fall back to its captured glyph.")
+    }
+
+    private static func inputSourcePresentation() throws {
+        let captured = NSImage(size: NSSize(width: 24, height: 24))
+        captured.isTemplate = true
+        let genericApplicationIcon = NSImage(size: NSSize(width: 128, height: 128))
+        let inputSource = MenuBarItem(
+            id: "input-source",
+            title: "com.apple.TextInputMenuAgent",
+            ownerName: "Control Center",
+            bundleIdentifier: "com.apple.TextInputMenuAgent",
+            frame: .zero,
+            axElement: nil,
+            iconImage: captured,
+            applicationIcon: genericApplicationIcon,
+            isSelected: true,
+            supportsPressAction: false
+        )
+        inputSource.resolvedApplicationIcon = genericApplicationIcon
+
+        try expect(MenuBarSystemItemClassifier.canonicalName("com.apple.TextInputMenuAgent") == "Input Source",
+                   "The input-source agent must use a readable menu item name.")
+        try expect(inputSource.displayImage === captured,
+                   "The input-source tray entry must keep its captured menu-bar glyph instead of a generic app icon.")
+        try expect(!inputSource.usesApplicationIconForDisplay,
+                   "The input-source agent must not be styled as a third-party application icon.")
+        try expect(inputSource.fallbackSymbolName == "keyboard",
+                   "The input-source fallback must remain recognizable when capture is unavailable.")
+    }
+
+    private static func applicationIdentityResolution() throws {
+        let helperURL = URL(fileURLWithPath: "/Applications/Tencent Lemon.app/Contents/Library/LoginItems/LemonMonitor.app")
+        let outerURL = URL(fileURLWithPath: "/Applications/Tencent Lemon.app")
+        let helperIcon = NSImage(size: NSSize(width: 32, height: 32))
+        let outerIcon = NSImage(size: NSSize(width: 128, height: 128))
+        var metadataReads = 0
+        let resolver = MenuBarApplicationIdentityResolver(
+            runningApplication: { bundleIdentifier in
+                guard bundleIdentifier == "com.tencent.LemonMonitor" else { return nil }
+                return .init(displayName: "LemonMonitor", bundleIdentifier: bundleIdentifier,
+                             bundleURL: helperURL, icon: helperIcon)
+            },
+            installedApplicationURL: { _ in nil },
+            applicationMetadata: { url in
+                metadataReads += 1
+                guard url == outerURL else { return nil }
+                return .init(displayName: "Tencent Lemon", bundleIdentifier: "com.tencent.Lemon",
+                             bundleURL: url, icon: outerIcon)
+            }
+        )
+
+        try expect(MenuBarApplicationIdentityResolver.outermostApplicationURL(for: helperURL) == outerURL,
+                   "A nested login item must resolve to its outer application bundle.")
+        let first = resolver.resolve(bundleIdentifier: "com.tencent.LemonMonitor")
+        let second = resolver.resolve(bundleIdentifier: "com.tencent.LemonMonitor")
+        try expect(first?.displayName == "Tencent Lemon" && first?.bundleIdentifier == "com.tencent.Lemon",
+                   "A helper process must be labeled with the outer application's identity.")
+        try expect(first?.icon === outerIcon,
+                   "A helper process must use the outer application's own icon.")
+        try expect(second?.icon === first?.icon && metadataReads == 1,
+                   "Application identity and NSImage instances must be reused across scans.")
+
+        let scanner = MenuBarScanner(
+            readWindows: { [window(120, "com.tencent.LemonMonitor", x: 1000, width: 30, height: 30)] },
+            readDisplayBounds: { [CGRect(x: 0, y: 0, width: 1512, height: 982)] },
+            ownBundleIdentifier: "com.bartuck.app",
+            applicationResolver: resolver
+        )
+        let scanned = scanner.scan(selectedIDs: []).first
+        try expect(scanned?.displayTitle(for: .english) == "Tencent Lemon",
+                   "Window-backed helper items must expose the outer application name.")
+        try expect(scanned?.displayImage === outerIcon,
+                   "Window-backed helper items must expose the cached outer application icon.")
+        try expect(MenuBarApplicationIdentityResolver.declaresApplicationIcon([
+            "CFBundleIconName": "AppIcon"
+        ]), "Asset-catalog app icons must be recognized.")
+        try expect(MenuBarApplicationIdentityResolver.declaresApplicationIcon([
+            "CFBundleIconFiles": ["LegacyIcon"]
+        ]), "Legacy macOS icon arrays must be recognized.")
+        try expect(MenuBarApplicationIdentityResolver.declaresApplicationIcon([
+            "CFBundleIcons": ["CFBundlePrimaryIcon": ["CFBundleIconName": "AppIcon"]]
+        ]), "Nested bundle icon dictionaries must be recognized.")
+        try expect(!MenuBarApplicationIdentityResolver.declaresApplicationIcon([:]),
+                   "A helper without declared icon metadata must keep the captured menu-bar fallback.")
+    }
+
+    private static func macOS27AccessibilityDiscoveryBoundaries() throws {
+        let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let compositeHost = CGRect(x: 756, y: 0, width: 756, height: 30)
+        let discreteWindow = CGRect(x: 1372, y: 0, width: 34, height: 30)
+        let accessibilityChild = CGRect(x: 1374, y: 0, width: 30, height: 30)
+
+        try expect(!MenuBarScanner.isDiscreteAccessibilitySeed(
+            frame: compositeHost,
+            displayBounds: [display]
+        ), "macOS 27 must not seed AX discovery with one composite menu-bar host.")
+        try expect(MenuBarScanner.isDiscreteAccessibilitySeed(
+            frame: discreteWindow,
+            displayBounds: [display]
+        ), "A real per-item status window must remain available for AX enrichment and icon capture.")
+        try expect(!MenuBarScanner.framesRepresentSameItem(compositeHost, accessibilityChild),
+                   "A composite host must not match every overlapping AX child.")
+        try expect(MenuBarScanner.framesRepresentSameItem(discreteWindow, accessibilityChild),
+                   "Similar per-item WindowServer and AX frames must still merge.")
+    }
+
+    private static func accessibilityRestorationFrame() throws {
+        let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let visibleFrame = CGRect(x: 1372, y: 0, width: 34, height: 30)
+        let hiddenFrame = CGRect(x: -50, y: 0, width: 34, height: 30)
+        let movedVisibleFrame = CGRect(x: 1320, y: 0, width: 34, height: 30)
+        let item = MenuBarItem(
+            id: "ax-item",
+            title: "Status",
+            ownerName: "Utility",
+            bundleIdentifier: "com.example.utility",
+            frame: visibleFrame,
+            axElement: nil,
+            isSelected: true,
+            supportsPressAction: true
+        )
+        let hiddenScan = MenuBarItem(
+            id: item.id,
+            title: item.title,
+            ownerName: item.ownerName,
+            bundleIdentifier: item.bundleIdentifier,
+            frame: hiddenFrame,
+            axElement: nil,
+            isSelected: true,
+            supportsPressAction: true
+        )
+
+        item.updateRuntimeState(from: hiddenScan, displayBounds: [display])
+        try expect(item.frame == hiddenFrame,
+                   "Refresh must retain the current offscreen AX frame for visibility checks.")
+        try expect(item.restorationFrame == visibleFrame,
+                   "An offscreen refresh must not overwrite the last usable AX restore position.")
+
+        let visibleScan = MenuBarItem(
+            id: item.id,
+            title: item.title,
+            ownerName: item.ownerName,
+            bundleIdentifier: item.bundleIdentifier,
+            frame: movedVisibleFrame,
+            axElement: nil,
+            isSelected: true,
+            supportsPressAction: true
+        )
+        item.updateRuntimeState(from: visibleScan, displayBounds: [display])
+        try expect(item.restorationFrame == movedVisibleFrame,
+                   "A later visible AX position must become the new restore position.")
     }
 
     private static let displays = [CGRect(x: 0, y: 0, width: 1512, height: 982),

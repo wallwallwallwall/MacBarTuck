@@ -15,6 +15,7 @@ for source in \
     "$ROOT/MacBarTuck/Core/MenuItemSafetyPolicy.swift" \
     "$ROOT/MacBarTuck/Core/MenuItemVisibility.swift" \
     "$ROOT/MacBarTuck/Core/MenuBarInteractionPolicy.swift" \
+    "$ROOT/MacBarTuck/Core/MenuBarPlatformPolicy.swift" \
     "$ROOT/MacBarTuck/Core/PreviewSelectionPolicy.swift" \
     "$ROOT/MacBarTuck/Core/OverflowPolicy.swift"
 do
@@ -40,6 +41,7 @@ swiftc \
     -parse-as-library \
     "${SOURCES[@]}" \
     "$ROOT/MacBarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarApplicationIdentityResolver.swift" \
     "$ROOT/MacBarTuck/Services/MenuBarWindowServer.swift" \
     "$ROOT/MacBarTuck/Services/MenuBarScanner.swift" \
     "$ROOT/MacBarTuck/Core/StatusItemLayoutPolicy.swift" \
@@ -51,6 +53,7 @@ swiftc \
 
 swiftc -parse-as-library "${SOURCES[@]}" \
     "$ROOT/MacBarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarApplicationIdentityResolver.swift" \
     "$ROOT/MacBarTuck/Services/MenuBarWindowServer.swift" \
     "$ROOT/MacBarTuck/Services/MenuBarScanner.swift" \
     "$ROOT/Tests/MenuBarIdentityTests.swift" \
@@ -64,6 +67,7 @@ swiftc -parse-as-library "${SOURCES[@]}" \
 
 swiftc -parse-as-library "${SOURCES[@]}" \
     "$ROOT/MacBarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/MacBarTuck/UI/MacBarTuckTheme.swift" \
     "$ROOT/MacBarTuck/Services/PreferencesStore.swift" \
     "$ROOT/MacBarTuck/App/DockVisibilityController.swift" \
     "$ROOT/MacBarTuck/App/AppMenuController.swift" \

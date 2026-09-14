@@ -28,8 +28,6 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle, .fullScreenAuxiliary]
-        panel.isOpaque = false
-        panel.backgroundColor = NSColor(calibratedWhite: 0.025, alpha: 0.01)
         panel.hasShadow = true
         panel.animationBehavior = .none
         panel.isReleasedWhenClosed = false
@@ -48,6 +46,7 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
                 self?.store.retuckTemporarilyVisibleItems()
             })
         })
+        MacBarTuckTrayAppearance.apply(to: panel)
         panel.orderOut(nil)
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,

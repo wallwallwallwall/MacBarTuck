@@ -77,17 +77,23 @@ private enum LocalizationTests {
             "items.footer.count",
             "items.visibility.temporary",
             "items.retuck_temporary",
+            "items.apply",
+            "items.apply.help",
+            "panel.tucked.count",
             "panel.retuck",
             "panel.retuck.count",
             "panel.temporary.help",
             "preferences.hover.help",
-            "store.activation.retuck_progress"
+            "store.activation.retuck_progress",
+            "store.layout.changes_pending"
         ] {
             try expect(zh[key] != nil && en[key] != nil, "Missing required localization key: \(key)")
         }
 
         try expect(en["settings.tab.items"] == "Menu Items", "English settings labels must be translated.")
         try expect(zh["preferences.language.label"] == "界面语言", "Chinese language control must be clear.")
+        try expect(zh["items.apply"] == "应用显示方式" && en["items.apply"] == "Apply Display Modes",
+                   "The primary menu-item action must be immediately understandable in both languages.")
         try expect(Set(zhInfo.keys) == Set(enInfo.keys), "Chinese and English Info.plist localization keys must match.")
         try expect(zhInfo["NSScreenCaptureUsageDescription"]?.isEmpty == false,
                    "Chinese screen recording usage text must be present.")
@@ -112,6 +118,12 @@ private enum LocalizationTests {
         try expect(AppLanguageController.text("panel.retuck.count", language: .english,
                                               rootBundle: resourceBundle, arguments: [1]) == "Retuck: 1",
                    "The English tray action must explain what the temporary-item count means.")
+        try expect(AppLanguageController.text("panel.tucked.count", language: .simplifiedChinese,
+                                              rootBundle: resourceBundle, arguments: [5]) == "已收纳 5 项",
+                   "The Chinese tray summary must explain the normal tucked state.")
+        try expect(AppLanguageController.text("panel.tucked.count", language: .english,
+                                              rootBundle: resourceBundle, arguments: [5]) == "5 Tucked",
+                   "The English tray summary must explain the normal tucked state.")
 
         let englishLanguage = AppLanguageController(
             defaults: UserDefaults(suiteName: "\(domain).display")!,

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum MacBarTuckTheme {
@@ -6,6 +7,8 @@ enum MacBarTuckTheme {
     static let surface = Color(nsColor: .controlBackgroundColor)
     static let raisedSurface = Color.white.opacity(0.045)
     static let deepSurface = Color.black.opacity(0.14)
+    static let traySurface = Color(red: 0.075, green: 0.090, blue: 0.105).opacity(0.98)
+    static let trayStroke = Color(red: 0.34, green: 0.68, blue: 0.73).opacity(0.34)
     static let stroke = Color.white.opacity(0.09)
     static let strongStroke = Color.white.opacity(0.16)
     static let primaryText = Color.primary
@@ -15,6 +18,45 @@ enum MacBarTuckTheme {
     static let success = Color(red: 0.35, green: 0.84, blue: 0.59)
     static let retuckAction = Color(red: 0.98, green: 0.68, blue: 0.22)
     static let warning = Color(red: 1.00, green: 0.43, blue: 0.38)
+}
+
+@MainActor
+enum MacBarTuckTrayAppearance {
+    static func apply(to panel: NSPanel) {
+        let appearance = NSAppearance(named: .darkAqua)
+        panel.appearance = appearance
+        panel.contentView?.appearance = appearance
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+    }
+}
+
+enum MacBarTuckTrayLayout {
+    static let preferredHeight: CGFloat = 50
+    static let itemSlotWidth: CGFloat = 40
+    static let itemSpacing: CGFloat = 2
+    static let summaryWidth: CGFloat = 104
+    static let retuckButtonWidth: CGFloat = 114
+
+    private static let baseChromeWidth: CGFloat = summaryWidth + 31
+    private static let retuckChromeWidth: CGFloat = retuckButtonWidth + 11
+    private static let emptyMessageWidth: CGFloat = 109
+    private static let layoutSafetyWidth: CGFloat = 2
+
+    static func preferredWidth(itemCount: Int, showsRetuck: Bool) -> CGFloat {
+        let count = max(0, itemCount)
+        let contentWidth: CGFloat
+        if count == 0 {
+            contentWidth = emptyMessageWidth
+        } else {
+            contentWidth = CGFloat(count) * itemSlotWidth
+                + CGFloat(max(0, count - 1)) * itemSpacing
+        }
+        return baseChromeWidth
+            + contentWidth
+            + (showsRetuck ? retuckChromeWidth : 0)
+            + layoutSafetyWidth
+    }
 }
 
 struct MacBarTuckSurface<Content: View>: View {

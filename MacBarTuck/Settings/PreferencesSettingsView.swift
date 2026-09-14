@@ -61,24 +61,6 @@ struct PreferencesSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Section(language.text("preferences.items.section")) {
-                    HStack {
-                        Button(language.text("preferences.apply"), systemImage: "checkmark") { store.applyLayout() }
-                            .disabled(!store.layoutManagementEnabled || store.selectedItems.isEmpty)
-                        if !store.temporarilyVisibleItems.isEmpty {
-                            Button(language.text("panel.retuck.count", store.temporarilyVisibleItems.count),
-                                   systemImage: "arrow.uturn.backward.circle.fill") {
-                                store.retuckTemporarilyVisibleItems()
-                            }
-                            .tint(MacBarTuckTheme.retuckAction)
-                        }
-                        Button(language.text("preferences.show_all"), systemImage: "arrow.uturn.backward") { store.setLayoutManagementEnabled(false) }
-                            .disabled(!store.layoutManagementEnabled)
-                    }
-                    if let message = store.layoutOperationMessage {
-                        Text(message).foregroundStyle(.secondary).font(.caption)
-                    }
-                }
                 Section(language.text("preferences.diagnostics.section")) {
                     HStack {
                         Button(language.text("preferences.logs.open"), systemImage: "doc.text.magnifyingglass") {

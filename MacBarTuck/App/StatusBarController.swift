@@ -39,10 +39,7 @@ final class StatusBarController: NSObject {
         defaults.set(true, forKey: "NSStatusItem Visible \(arrowName)")
         defaults.set(true, forKey: "NSStatusItem Visible \(hiddenName)")
         let visibleLength = max(NSStatusBar.system.thickness, 18)
-        let hiddenLength: CGFloat = {
-            if #available(macOS 27.0, *) { return 0 }
-            return 20
-        }()
+        let hiddenLength: CGFloat = MenuBarPlatformPolicy.current.usesHiddenSection ? 20 : 0
         statusItem = NSStatusBar.system.statusItem(withLength: visibleLength)
         statusItem.autosaveName = arrowName
         hiddenSectionItem = NSStatusBar.system.statusItem(withLength: hiddenLength)
@@ -74,7 +71,7 @@ final class StatusBarController: NSObject {
         let button = statusItem.button
         statusItem.length = visibleLength
         statusItem.isVisible = true
-        if #unavailable(macOS 27.0) {
+        if MenuBarPlatformPolicy.current.usesHiddenSection {
             hiddenSectionItem.isVisible = true
         }
         button?.image = Self.statusBarImage(language: language)
@@ -239,7 +236,7 @@ final class StatusBarController: NSObject {
 
     private func updateHiddenSectionLength() {
         guard !isTerminating else { return }
-        if #available(macOS 27.0, *) {
+        if !MenuBarPlatformPolicy.current.usesHiddenSection {
             // macOS 27 owns the overflow slot and renders the menu bar as a
             // composite host. Keeping a staging item would compete with it.
             hiddenSectionItem.length = 0

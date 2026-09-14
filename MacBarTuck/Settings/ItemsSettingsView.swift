@@ -30,6 +30,15 @@ struct ItemsSettingsView: View {
                 .padding(.horizontal, 8).frame(width: 260, height: 28)
                 .background(MacBarTuckTheme.deepSurface, in: RoundedRectangle(cornerRadius: 5))
                 Spacer()
+                Button {
+                    store.applyLayout()
+                } label: {
+                    Label(language.text("items.apply"), systemImage: "checkmark.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(!store.layoutManagementEnabled || store.selectedItems.isEmpty || store.isInteractionBusy)
+                .help(language.text("items.apply.help"))
                 Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless).frame(width: 28, height: 28)
                     .help(language.text("items.rescan")).accessibilityLabel(language.text("items.rescan"))

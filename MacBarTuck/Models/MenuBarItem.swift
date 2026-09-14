@@ -2,6 +2,16 @@ import AppKit
 import ApplicationServices
 
 enum MenuBarSystemItemClassifier {
+    static func isInputSourceAgent(_ title: String, owner: String? = nil) -> Bool {
+        let values = [normalize(title), normalize(owner ?? "")]
+        return values.contains("com.apple.textinputmenuagent") ||
+            values.contains(where: { $0.contains("textinputmenuagent") })
+    }
+
+    static func prefersCapturedMenuBarIcon(_ title: String, bundleIdentifier: String? = nil) -> Bool {
+        isInputSourceAgent(title, owner: bundleIdentifier)
+    }
+
     static func isGenericControlCenterItem(_ title: String, owner: String? = nil) -> Bool {
         let normalized = normalize(title)
         let normalizedOwner = normalize(owner ?? "")
@@ -24,6 +34,7 @@ enum MenuBarSystemItemClassifier {
 
     static func canonicalName(_ title: String, owner: String? = nil) -> String {
         let normalized = normalize(title)
+        if isInputSourceAgent(title, owner: owner) { return "Input Source" }
         if normalized.contains("wifi") { return "WiFi" }
         if normalized.contains("bluetooth") { return "Bluetooth" }
         if normalized.contains("battery") { return "Battery" }
@@ -56,14 +67,15 @@ final class MenuBarItem: Identifiable {
     var title: String
     var ownerName: String
     var bundleIdentifier: String?
-    let frame: CGRect
+    var frame: CGRect
+    private(set) var restorationFrame: CGRect
     var axElement: AXUIElement?
     var supportsPressAction: Bool
-    let windowID: CGWindowID?
-    let ownerPID: pid_t?
+    var windowID: CGWindowID?
+    var ownerPID: pid_t?
     var isProtectedSystemItem: Bool
     var iconImage: NSImage?
-    let applicationIcon: NSImage?
+    var applicationIcon: NSImage?
     var isSelected: Bool
     var rule: MenuItemRule
     var mirrors: [MenuBarItem] = []
@@ -92,6 +104,7 @@ final class MenuBarItem: Identifiable {
         self.ownerName = ownerName
         self.bundleIdentifier = bundleIdentifier
         self.frame = frame
+        restorationFrame = frame
         self.axElement = axElement
         self.iconImage = iconImage
         self.applicationIcon = applicationIcon
@@ -152,11 +165,16 @@ final class MenuBarItem: Identifiable {
     /// be resolved. Protected system controls keep their item-specific glyph.
     var displayImage: NSImage? {
         if isProtectedSystemItem { return menuBarImage }
+        if MenuBarSystemItemClassifier.prefersCapturedMenuBarIcon(title, bundleIdentifier: bundleIdentifier) {
+            return iconImage
+        }
         return resolvedApplicationIcon ?? applicationIcon ?? iconImage
     }
 
     var usesApplicationIconForDisplay: Bool {
-        !isProtectedSystemItem && (resolvedApplicationIcon != nil || applicationIcon != nil)
+        !isProtectedSystemItem &&
+            !MenuBarSystemItemClassifier.prefersCapturedMenuBarIcon(title, bundleIdentifier: bundleIdentifier) &&
+            (resolvedApplicationIcon != nil || applicationIcon != nil)
     }
 
     var usesTemplateIcon: Bool {
@@ -220,8 +238,31 @@ final class MenuBarItem: Identifiable {
         if value.contains("screen recording") || value.contains("screenrecording") { return "record.circle" }
         if value.contains("vpn") { return "lock.shield.fill" }
         if value.contains("clock") { return "clock.fill" }
+        if MenuBarSystemItemClassifier.isInputSourceAgent(title, owner: bundleIdentifier) { return "keyboard" }
         if value.contains("amphetamine") { return "bolt.fill" }
         return "circle.grid.2x2.fill"
+    }
+
+    func updateRuntimeState(from scanned: MenuBarItem, displayBounds: [CGRect]) {
+        if MenuBarGeometry.isVisibleMenuBarItem(scanned.frame, displayBounds: displayBounds) {
+            restorationFrame = scanned.frame
+        }
+        title = scanned.title
+        ownerName = scanned.ownerName
+        bundleIdentifier = scanned.bundleIdentifier
+        frame = scanned.frame
+        axElement = scanned.axElement
+        supportsPressAction = scanned.supportsPressAction
+        windowID = scanned.windowID
+        ownerPID = scanned.ownerPID
+        isProtectedSystemItem = scanned.isProtectedSystemItem
+        applicationIcon = scanned.applicationIcon
+        mirrors = scanned.mirrors
+        sourceDisplayBounds = scanned.sourceDisplayBounds
+        legacyIDs = scanned.legacyIDs
+        resolvedTitle = scanned.resolvedTitle
+        resolvedApplicationIcon = scanned.resolvedApplicationIcon
+        if let captured = scanned.iconImage { iconImage = captured }
     }
 
     private func localized(_ key: String, language: AppLanguage, _ arguments: CVarArg...) -> String {

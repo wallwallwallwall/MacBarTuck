@@ -60,17 +60,28 @@ final class PermissionManager: ObservableObject {
         refresh()
     }
 
-    func refresh() {
-        accessibilityGranted = accessibilityStatus()
-        screenRecordingGranted = screenCaptureStatus()
-        if accessibilityGranted { history?.set(true, forKey: "permissionAccessibilityWasEffective") }
-        if screenRecordingGranted {
+    func refresh(updateTimestamp: Bool = true) {
+        let currentAccessibility = accessibilityStatus()
+        let currentScreenRecording = screenCaptureStatus()
+        if currentAccessibility { history?.set(true, forKey: "permissionAccessibilityWasEffective") }
+        if currentScreenRecording {
             history?.set(true, forKey: "permissionScreenWasEffective")
-            screenRestartSuggested = false
+            if screenRestartSuggested { screenRestartSuggested = false }
         }
-        accessibilityWasPreviouslyEffective = history?.bool(forKey: "permissionAccessibilityWasEffective") ?? accessibilityGranted
-        screenWasPreviouslyEffective = history?.bool(forKey: "permissionScreenWasEffective") ?? screenRecordingGranted
-        lastChecked = Date()
+        let previousAccessibility = history?.bool(forKey: "permissionAccessibilityWasEffective")
+            ?? currentAccessibility
+        let previousScreenRecording = history?.bool(forKey: "permissionScreenWasEffective")
+            ?? currentScreenRecording
+
+        if accessibilityGranted != currentAccessibility { accessibilityGranted = currentAccessibility }
+        if screenRecordingGranted != currentScreenRecording { screenRecordingGranted = currentScreenRecording }
+        if accessibilityWasPreviouslyEffective != previousAccessibility {
+            accessibilityWasPreviouslyEffective = previousAccessibility
+        }
+        if screenWasPreviouslyEffective != previousScreenRecording {
+            screenWasPreviouslyEffective = previousScreenRecording
+        }
+        if updateTimestamp { lastChecked = Date() }
     }
 
     func requestAccessibility() {

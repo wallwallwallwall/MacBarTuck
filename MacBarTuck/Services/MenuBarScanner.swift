@@ -9,17 +9,20 @@ final class MenuBarScanner {
     private let readWindows: () -> [[String: Any]]
     private let readDisplayBounds: () -> [CGRect]
     private let ownBundleIdentifier: String?
+    private let applicationResolver: MenuBarApplicationIdentityResolver
     private let sessionIdentity = UUID().uuidString
     private var knownMirrorPairs: [CGWindowID: Set<CGWindowID>] = [:]
 
     init(
         readWindows: @escaping () -> [[String: Any]] = MenuBarWindowServer.windowInfo,
         readDisplayBounds: @escaping () -> [CGRect] = MenuBarScanner.activeDisplayBounds,
-        ownBundleIdentifier: String? = Bundle.main.bundleIdentifier
+        ownBundleIdentifier: String? = Bundle.main.bundleIdentifier,
+        applicationResolver: MenuBarApplicationIdentityResolver = MenuBarApplicationIdentityResolver()
     ) {
         self.readWindows = readWindows
         self.readDisplayBounds = readDisplayBounds
         self.ownBundleIdentifier = ownBundleIdentifier
+        self.applicationResolver = applicationResolver
     }
 
     func setOwnedStatusWindowIDs(_ windowIDs: Set<CGWindowID>) {
@@ -37,22 +40,38 @@ final class MenuBarScanner {
         // macOS 27 no longer guarantees one WindowServer window per status
         // item. Prefer the per-item AX tree there; the old layer-25 list can
         // otherwise collapse into one composite menu-bar host.
-        if #available(macOS 27.0, *) {
+        switch MenuBarPlatformPolicy.current.discovery {
+        case .accessibilityPreferred:
+            guard AXIsProcessTrusted() else { return windowItems }
+            let accessibilitySeeds = windowItems.filter {
+                Self.isDiscreteAccessibilitySeed(frame: $0.frame, displayBounds: displayBounds())
+            }
+            let discovered = scanAccessibilityItems(
+                accessibilitySeeds,
+                selectedIDs: selectedIDs,
+                allowsUnmatchedRegularItems: true
+            )
+            return discovered.contains(where: { $0.axElement != nil }) ? discovered : windowItems
+        case .windowServerOnly:
+            return windowItems
+        case .windowServerWithAccessibility:
             guard AXIsProcessTrusted() else { return windowItems }
             return scanAccessibilityItems(windowItems, selectedIDs: selectedIDs)
         }
-        if #available(macOS 26.0, *) {
-            return windowItems
-        }
-        guard AXIsProcessTrusted() else { return windowItems }
-        return scanAccessibilityItems(windowItems, selectedIDs: selectedIDs)
     }
 
-    private func scanAccessibilityItems(_ initialResults: [MenuBarItem], selectedIDs: Set<String>) -> [MenuBarItem] {
+    func invalidateApplicationIdentityCache() { applicationResolver.invalidate() }
+
+    private func scanAccessibilityItems(
+        _ initialResults: [MenuBarItem],
+        selectedIDs: Set<String>,
+        allowsUnmatchedRegularItems: Bool = false
+    ) -> [MenuBarItem] {
         var results = initialResults
         let ownBundleID = Bundle.main.bundleIdentifier
         for app in NSWorkspace.shared.runningApplications {
             guard let bundleID = app.bundleIdentifier, bundleID != ownBundleID else { continue }
+            let identity = applicationResolver.resolve(bundleIdentifier: bundleID)
             let application = AXUIElementCreateApplication(app.processIdentifier)
             // AX calls can block while a login item is rebuilding its menu.
             // The old unbounded traversal was the reason this path was
@@ -66,14 +85,15 @@ final class MenuBarScanner {
                 let title = stringAttribute(child, kAXTitleAttribute as CFString) ??
                     stringAttribute(child, kAXDescriptionAttribute as CFString) ?? "Menu Bar Item"
                 let matchingIndex = results.firstIndex { existing in
-                    framesMatch(existing.frame, frame) ||
+                    Self.framesRepresentSameItem(existing.frame, frame) ||
                         (existing.ownerPID == app.processIdentifier && existing.title == title)
                 }
                 let isProtected = MenuBarSystemItemClassifier.isProtected(title, owner: bundleID)
                 // A regular application's AX menu bar also contains File/Edit
                 // style menus. Only admit unmatched elements from accessory
                 // apps; regular apps may still enrich a matching status item.
-                guard matchingIndex != nil || app.activationPolicy != .regular else { continue }
+                guard matchingIndex != nil || allowsUnmatchedRegularItems ||
+                    app.activationPolicy != .regular else { continue }
                 if title.isEmpty || excludedTitles.contains(title) ||
                     (!isProtected && looksLikeTextMenu(title, frame: frame)) {
                     if let matchingIndex, !results[matchingIndex].isProtectedSystemItem {
@@ -88,23 +108,35 @@ final class MenuBarScanner {
                     existing.supportsPressAction = supportsPress
                     if existing.isProtectedSystemItem { continue }
                     existing.title = title
-                    existing.ownerName = app.localizedName ?? bundleID
-                    existing.bundleIdentifier = bundleID
+                    existing.ownerName = identity?.displayName ?? app.localizedName ?? bundleID
+                    existing.bundleIdentifier = identity?.bundleIdentifier ?? bundleID
+                    if MenuBarSystemItemClassifier.isInputSourceAgent(title, owner: bundleID) {
+                        existing.resolvedTitle = "Input Source"
+                        existing.resolvedApplicationIcon = nil
+                    } else {
+                        existing.resolvedApplicationIcon = identity?.icon
+                    }
                     continue
                 }
                 let id = isProtected ? "system|\(MenuBarSystemItemClassifier.canonicalName(title, owner: bundleID))|0" : "\(bundleID)|\(title)"
-                results.append(MenuBarItem(
+                let item = MenuBarItem(
                     id: id,
                     title: isProtected ? MenuBarSystemItemClassifier.canonicalName(title, owner: bundleID) : title,
-                    ownerName: isProtected ? "System Menu Bar" : (app.localizedName ?? bundleID),
-                    bundleIdentifier: bundleID,
+                    ownerName: isProtected ? "System Menu Bar" : (identity?.displayName ?? app.localizedName ?? bundleID),
+                    bundleIdentifier: identity?.bundleIdentifier ?? bundleID,
                     frame: frame,
                     axElement: child,
-                    applicationIcon: app.icon,
+                    applicationIcon: MenuBarSystemItemClassifier.prefersCapturedMenuBarIcon(title, bundleIdentifier: bundleID)
+                        ? nil
+                        : (identity?.icon ?? app.icon),
                     isSelected: !isProtected && selectedIDs.contains(id),
                     supportsPressAction: supportsPress,
                     isProtectedSystemItem: isProtected
-                ))
+                )
+                item.resolvedTitle = MenuBarSystemItemClassifier.isInputSourceAgent(title, owner: bundleID)
+                    ? "Input Source"
+                    : nil
+                results.append(item)
             }
         }
         return results.sorted { $0.frame.minX < $1.frame.minX }
@@ -132,16 +164,20 @@ final class MenuBarScanner {
             // the localized owner name or its bundle identifier. Keep one
             // stable key so selections survive WindowServer refreshes.
             let rawOwnerKey = runningApp?.bundleIdentifier ?? owner
+            let runningIdentity = runningApp?.bundleIdentifier.flatMap {
+                applicationResolver.resolve(bundleIdentifier: $0)
+            }
             let ownerKey = rawOwnerKey == "com.apple.controlcenter" || owner == "Control Center"
                 ? "Control Center"
                 : rawOwnerKey
             // Control Center's generic application icon is a white rounded
             // square, not the status item's icon. Keep it out of the panel so
             // the item-specific capture/fallback symbol can be used instead.
-            let applicationIcon = ownerKey == "Control Center" ? nil : runningApp?.icon
+            let applicationIcon = ownerKey == "Control Center" ? nil : (runningIdentity?.icon ?? runningApp?.icon)
+            let displayOwner = ownerKey == "Control Center" ? owner : (runningIdentity?.displayName ?? owner)
             let frame = bounds
             guard isMenuBarWindowFrame(frame), frame.width > 4, frame.height > 4, frame.height <= 40 else { return nil }
-            return (identifier, ownerPID, title, owner, ownerKey, applicationIcon, frame)
+            return (identifier, ownerPID, title, displayOwner, ownerKey, applicationIcon, frame)
         }
         var occurrences: [String: Int] = [:]
         var legacyOccurrences: [String: Int] = [:]
@@ -255,18 +291,17 @@ final class MenuBarScanner {
             }
             representative.legacyIDs = Set(members.filter { !Self.isAnonymousTitle($0.title) }.map(\.id))
             representative.isSelected = members.contains(where: \.isSelected)
-            if representative.title.contains("."),
-               let app = NSRunningApplication.runningApplications(withBundleIdentifier: representative.title).first {
-                representative.resolvedTitle = app.localizedName
-                representative.resolvedApplicationIcon = app.icon
+            if MenuBarSystemItemClassifier.isInputSourceAgent(representative.title,
+                                                              owner: representative.bundleIdentifier) {
+                representative.resolvedTitle = "Input Source"
+                representative.applicationIcon = nil
+                representative.resolvedApplicationIcon = nil
             } else if representative.title.contains("."),
-                      let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: representative.title),
-                      let bundle = Bundle(url: url) {
-                representative.resolvedTitle = (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
-                    ?? (bundle.object(forInfoDictionaryKey: "CFBundleName") as? String)
-                representative.resolvedApplicationIcon = NSWorkspace.shared.icon(forFile: url.path)
+                      let identity = applicationResolver.resolve(bundleIdentifier: representative.title) {
+                representative.resolvedTitle = identity.displayName
+                representative.bundleIdentifier = identity.bundleIdentifier ?? representative.bundleIdentifier
+                representative.resolvedApplicationIcon = identity.icon
             }
-            if representative.title == "com.apple.TextInputMenuAgent" { representative.resolvedTitle = "Input Source" }
             result.append(representative)
         }
         let currentWindowIDs = Set(items.compactMap(\.windowID))
@@ -308,14 +343,22 @@ final class MenuBarScanner {
     }
 
     func refreshAccessibility(for item: MenuBarItem) -> (element: AXUIElement, supportsPress: Bool)? {
-        if #available(macOS 27.0, *) {
-            // macOS 27 needs a fresh AX element after the system rebuilds its
-            // composite host. Continue below.
-        } else if #available(macOS 26.0, *) {
+        if MenuBarPlatformPolicy.current.discovery == .windowServerOnly {
             return nil
         }
         guard AXIsProcessTrusted() else { return nil }
-        let candidates = scanAccessibilityItems(scanWindowBackedItems(selectedIDs: []), selectedIDs: [])
+        let windowItems = scanWindowBackedItems(selectedIDs: [])
+        let accessibilityPreferred = MenuBarPlatformPolicy.current.discovery == .accessibilityPreferred
+        let seeds = accessibilityPreferred
+            ? windowItems.filter {
+                Self.isDiscreteAccessibilitySeed(frame: $0.frame, displayBounds: displayBounds())
+            }
+            : windowItems
+        let candidates = scanAccessibilityItems(
+            seeds,
+            selectedIDs: [],
+            allowsUnmatchedRegularItems: accessibilityPreferred
+        )
         let match = candidates.first {
             if let windowID = item.windowID, $0.windowID == windowID { return true }
             return $0.id == item.id
@@ -350,10 +393,19 @@ final class MenuBarScanner {
         return frame.midX > display.midX && (nearQuartzMenuBar || nearAppKitMenuBar)
     }
 
-    private func framesMatch(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+    static func framesRepresentSameItem(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        let narrowerWidth = min(lhs.width, rhs.width)
+        let widerWidth = max(lhs.width, rhs.width)
+        guard narrowerWidth > 0, widerWidth <= narrowerWidth * 1.5 + 4 else { return false }
         let horizontalOverlap = max(0, min(lhs.maxX, rhs.maxX) - max(lhs.minX, rhs.minX))
         return horizontalOverlap >= min(lhs.width, rhs.width) * 0.5 &&
             abs(lhs.minY - rhs.minY) <= 4
+    }
+
+    static func isDiscreteAccessibilitySeed(frame: CGRect, displayBounds: [CGRect]) -> Bool {
+        guard let display = displayBounds.first(where: { $0.intersects(frame) }) else { return false }
+        let maximumWidth = min(CGFloat(320), display.width * 0.25)
+        return frame.width <= maximumWidth
     }
 
     private func looksLikeTextMenu(_ title: String, frame: CGRect) -> Bool {

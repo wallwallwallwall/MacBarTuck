@@ -12,7 +12,7 @@ struct OverflowItemView: View {
     @State private var isHovering = false
 
     private var iconSize: CGFloat {
-        item.usesApplicationIconForDisplay ? 28 : 22
+        item.usesApplicationIconForDisplay ? 26 : 20
     }
 
     var body: some View {
@@ -34,7 +34,7 @@ struct OverflowItemView: View {
                 }
             }
             .frame(width: iconSize, height: iconSize)
-            .frame(width: 34, height: 34)
+            .frame(width: 32, height: 32)
             .background {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isHovering ? MacBarTuckTheme.accent.opacity(0.18) : Color.clear)
@@ -52,7 +52,7 @@ struct OverflowItemView: View {
             }
         }
         .overlay { RightClickCaptureView(action: rightAction) }
-        .frame(width: OverflowPanelView.itemSlotWidth, height: 40)
+        .frame(width: OverflowPanelView.itemSlotWidth, height: 36)
         .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .onHover { hovering in
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) { isHovering = hovering }

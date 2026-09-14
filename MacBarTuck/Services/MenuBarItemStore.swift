@@ -55,6 +55,32 @@ final class MenuBarItemStore: ObservableObject {
     private var isTerminating = false
     private var failedLayoutIDs = Set<String>()
 
+    private struct ItemPresentation: Equatable {
+        let id: String
+        let title: String
+        let ownerName: String
+        let bundleIdentifier: String?
+        let resolvedTitle: String?
+        let isSelected: Bool
+        let rule: MenuItemRule
+        let visibility: MenuItemVisibility
+        let isProtected: Bool
+        let hasWindow: Bool
+        let menuBarImage: ObjectIdentifier?
+        let displayImage: ObjectIdentifier?
+        let menuBarImageIsTemplate: Bool
+        let displayImageIsTemplate: Bool
+    }
+
+    private struct RefreshPresentation: Equatable {
+        let items: [ItemPresentation]
+        let displays: [DisplaySnapshot]
+        let temporarilyVisibleItemIDs: Set<String>
+        let isReadyForManagedLayout: Bool
+        let requiresScreenRecording: Bool
+        let iconCaptureMessage: String?
+    }
+
     enum RefreshSource: Int {
         case manual, startup, externalChange, observation
     }
@@ -140,6 +166,7 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     private func refreshVisibilityFromWindows() {
+        let presentationBefore = refreshPresentation()
         let frames = Dictionary(MenuBarWindowServer.windowInfo().compactMap { info -> (CGWindowID, CGRect)? in
             guard let number = MenuBarWindowServer.integer(kCGWindowNumber as String, in: info),
                   number > 0, number <= Int(CGWindowID.max), let frame = MenuBarWindowServer.bounds(in: info) else { return nil }
@@ -147,14 +174,53 @@ final class MenuBarItemStore: ObservableObject {
         }, uniquingKeysWith: { first, _ in first })
         for item in items { item.updateVisibility(displayBounds: displays.map(\.frame), currentFrames: frames) }
         reconcileTemporarilyVisibleItems()
-        objectWillChange.send()
+        publishRefreshCallbacksIfNeeded(previous: presentationBefore, itemsWereReplaced: false)
     }
 
     private func reconcileTemporarilyVisibleItems() {
         let currentIDs = Set(items.map(\.id))
         let managedIDs = Set(items.filter(\.isSelected).map(\.id))
         let visibleIDs = Set(items.filter { $0.visibility != .hidden }.map(\.id))
-        temporarilyVisibleItemIDs.formIntersection(currentIDs.intersection(managedIDs).intersection(visibleIDs))
+        let retained = temporarilyVisibleItemIDs.intersection(
+            currentIDs.intersection(managedIDs).intersection(visibleIDs)
+        )
+        if temporarilyVisibleItemIDs != retained { temporarilyVisibleItemIDs = retained }
+    }
+
+    private func refreshPresentation() -> RefreshPresentation {
+        RefreshPresentation(
+            items: items.map { item in
+                ItemPresentation(
+                    id: item.id,
+                    title: item.title,
+                    ownerName: item.ownerName,
+                    bundleIdentifier: item.bundleIdentifier,
+                    resolvedTitle: item.resolvedTitle,
+                    isSelected: item.isSelected,
+                    rule: item.rule,
+                    visibility: item.visibility,
+                    isProtected: item.isProtectedSystemItem,
+                    hasWindow: item.windowID != nil,
+                    menuBarImage: item.menuBarImage.map { ObjectIdentifier($0) },
+                    displayImage: item.displayImage.map { ObjectIdentifier($0) },
+                    menuBarImageIsTemplate: item.usesTemplateMenuBarIcon,
+                    displayImageIsTemplate: item.usesTemplateIcon
+                )
+            },
+            displays: displays,
+            temporarilyVisibleItemIDs: temporarilyVisibleItemIDs,
+            isReadyForManagedLayout: isReadyForManagedLayout,
+            requiresScreenRecording: requiresScreenRecording,
+            iconCaptureMessage: iconCaptureMessage
+        )
+    }
+
+    private func publishRefreshCallbacksIfNeeded(previous: RefreshPresentation,
+                                                 itemsWereReplaced: Bool) {
+        guard previous != refreshPresentation() else { return }
+        if !itemsWereReplaced { objectWillChange.send() }
+        onLayoutStateChanged?()
+        onImagesReady?()
     }
 
     private func isOffscreen(_ item: MenuBarItem) -> Bool {
@@ -175,7 +241,10 @@ final class MenuBarItemStore: ObservableObject {
                      NSWorkspace.didTerminateApplicationNotification,
                      NSWorkspace.didWakeNotification] {
             workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.scheduleRefresh(after: 0.35, reason: "workspace change") }
+                Task { @MainActor in
+                    self?.scanner.invalidateApplicationIdentityCache()
+                    self?.scheduleRefresh(after: 0.35, reason: "workspace change")
+                }
             })
         }
         screenObserver = NotificationCenter.default.addObserver(
@@ -208,7 +277,8 @@ final class MenuBarItemStore: ObservableObject {
     func refresh(source: RefreshSource = .manual) {
         DiagnosticLog.shared.record("refresh.request", ["source": source.rawValue, "layout": isApplyingLayout ? 1 : 0])
         if isUIPreviewMode {
-            displays = DisplaySnapshotProvider.snapshots()
+            let latestDisplays = DisplaySnapshotProvider.snapshots()
+            if displays != latestDisplays { displays = latestDisplays }
             return
         }
         guard !isTerminating else { return }
@@ -217,21 +287,24 @@ final class MenuBarItemStore: ObservableObject {
             DiagnosticLog.shared.record("refresh.deferred")
             return
         }
-        permissions.refresh()
+        let presentationBefore = refreshPresentation()
+        permissions.refresh(updateTimestamp: false)
         guard permissions.screenRecordingGranted else {
-            requiresScreenRecording = true
+            if !requiresScreenRecording { requiresScreenRecording = true }
             captureGeneration += 1
             captureTask?.cancel()
             captureTask = nil
             isCapturing = false
-            items = []
-            displays = DisplaySnapshotProvider.snapshots()
-            isReadyForManagedLayout = false
-            iconCaptureMessage = language.text("store.capture.permission")
-            onLayoutStateChanged?()
+            if !items.isEmpty { items = [] }
+            let latestDisplays = DisplaySnapshotProvider.snapshots()
+            if displays != latestDisplays { displays = latestDisplays }
+            if isReadyForManagedLayout { isReadyForManagedLayout = false }
+            let permissionMessage = language.text("store.capture.permission")
+            if iconCaptureMessage != permissionMessage { iconCaptureMessage = permissionMessage }
+            publishRefreshCallbacksIfNeeded(previous: presentationBefore, itemsWereReplaced: true)
             return
         }
-        requiresScreenRecording = false
+        if requiresScreenRecording { requiresScreenRecording = false }
         guard !isRefreshing, !isCapturing else { refreshAgain = true; return }
         isRefreshing = true
         let previousByID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
@@ -248,21 +321,29 @@ final class MenuBarItemStore: ObservableObject {
         }
         let currentIDs = Set(scanned.map(\.id))
         let currentWindowIDs = Set(scanned.compactMap(\.windowID))
+        let latestDisplays = DisplaySnapshotProvider.snapshots()
+        let displayBounds = latestDisplays.map(\.frame)
 
-        for item in scanned {
-            let previous = previousByID[item.id] ?? item.windowID.flatMap { previousByWindowID[$0] }
-            item.iconImage = previous?.iconImage
-            item.rule = preferences.rule(for: item)
-        }
-
-        items = scanned.sorted {
+        let merged = scanned.map { scannedItem -> MenuBarItem in
+            if let previous = previousByID[scannedItem.id] {
+                previous.updateRuntimeState(from: scannedItem, displayBounds: displayBounds)
+                previous.rule = preferences.rule(for: previous)
+                return previous
+            }
+            let previous = scannedItem.windowID.flatMap { previousByWindowID[$0] }
+            scannedItem.iconImage = previous?.iconImage
+            scannedItem.rule = preferences.rule(for: scannedItem)
+            return scannedItem
+        }.sorted {
             let left = previousOrder[$0.id] ?? Int.max
             let right = previousOrder[$1.id] ?? Int.max
             return left == right ? $0.id < $1.id : left < right
         }
-        displays = DisplaySnapshotProvider.snapshots()
+        let itemsWereReplaced = items.map(\.id) != merged.map(\.id)
+        if itemsWereReplaced { items = merged }
+        if displays != latestDisplays { displays = latestDisplays }
         for item in items { item.updateVisibility(displayBounds: displays.map(\.frame)) }
-        recomputeManagedSelection()
+        recomputeManagedSelection(publish: false)
         reconcileTemporarilyVisibleItems()
         preferences.saveKnownItems(knownBefore.union(currentIDs))
         preferences.saveKnownWindowIDs(knownWindowIDsBefore.union(currentWindowIDs))
@@ -271,19 +352,19 @@ final class MenuBarItemStore: ObservableObject {
         }
         lastWindowSignature = scanner.windowSignature()
         isRefreshing = false
-        onLayoutStateChanged?()
-        isReadyForManagedLayout = selectedItems.allSatisfy(\.hasUsableDisplayIcon)
-        onImagesReady?()
+        let ready = selectedItems.allSatisfy(\.hasUsableDisplayIcon)
+        if isReadyForManagedLayout != ready { isReadyForManagedLayout = ready }
         let stableIDs = Set(items.filter { !$0.id.hasPrefix("session|") && !$0.isAlwaysVisibleSystemItem }.map(\.id))
         let canApplyNewItems = (source == .startup || source == .externalChange) && !stableIDs.subtracting(automaticInputIDs).isEmpty
         automaticInputIDs = stableIDs
+        let presentationChanged = presentationBefore != refreshPresentation()
+        publishRefreshCallbacksIfNeeded(previous: presentationBefore, itemsWereReplaced: itemsWereReplaced)
         DiagnosticLog.shared.record("refresh.result", ["source": source.rawValue, "items": items.count,
-            "selected": selectedItems.count, "capture": items.filter { $0.iconImage == nil }.count])
+            "selected": selectedItems.count, "capture": items.filter { $0.iconImage == nil }.count,
+            "changed": presentationChanged ? 1 : 0])
         let captureCandidates = items.filter { $0.iconImage == nil }
         refreshImages(for: captureCandidates) { [weak self] in
             guard let self else { return }
-            self.onLayoutStateChanged?()
-            self.onImagesReady?()
             if canApplyNewItems { self.scheduleAutomaticLayoutIfNeeded() }
             if self.refreshAgain {
                 self.refreshAgain = false
@@ -333,7 +414,7 @@ final class MenuBarItemStore: ObservableObject {
         recomputeManagedSelection()
 
         if item.isSelected, layoutManagementEnabled {
-            scheduleLayoutRetry(after: 0.3)
+            layoutOperationMessage = language.text("store.layout.changes_pending")
         } else if wasManaged, layoutManagementEnabled {
             temporarilyVisibleItemIDs.remove(item.id)
             restoreItems([item])
@@ -413,7 +494,7 @@ final class MenuBarItemStore: ObservableObject {
         scheduleRefresh(after: 0.5, reason: "display configuration changed", source: .observation)
     }
 
-    private func recomputeManagedSelection() {
+    private func recomputeManagedSelection(publish: Bool = true) {
         let constrainedDisplay = displays
             .filter { $0.availableMenuWidth != nil }
             .min {
@@ -461,13 +542,21 @@ final class MenuBarItemStore: ObservableObject {
         )
 
         for item in items {
-            item.isSelected = !item.isAlwaysVisibleSystemItem && managedIDs.contains(item.id)
+            let selected = !item.isAlwaysVisibleSystemItem && managedIDs.contains(item.id)
+            if item.isSelected != selected { item.isSelected = selected }
         }
-        preferences.saveSelected(Set(items.filter(\.isSelected).map(\.id)))
-        temporarilyVisibleItemIDs.formIntersection(Set(items.filter(\.isSelected).map(\.id)))
-        isReadyForManagedLayout = selectedItems.allSatisfy(\.hasUsableDisplayIcon)
-        objectWillChange.send()
-        onLayoutStateChanged?()
+        let selectedIDs = Set(items.filter(\.isSelected).map(\.id))
+        if preferences.selectedIDs != selectedIDs { preferences.saveSelected(selectedIDs) }
+        let retainedTemporaryIDs = temporarilyVisibleItemIDs.intersection(selectedIDs)
+        if temporarilyVisibleItemIDs != retainedTemporaryIDs {
+            temporarilyVisibleItemIDs = retainedTemporaryIDs
+        }
+        let ready = selectedItems.allSatisfy(\.hasUsableDisplayIcon)
+        if isReadyForManagedLayout != ready { isReadyForManagedLayout = ready }
+        if publish {
+            objectWillChange.send()
+            onLayoutStateChanged?()
+        }
     }
 
     private func restoreItems(_ itemsToRestore: [MenuBarItem]) {
@@ -495,7 +584,7 @@ final class MenuBarItemStore: ObservableObject {
             completion?()
             return
         }
-        permissions.refresh()
+        permissions.refresh(updateTimestamp: false)
         guard permissions.screenRecordingGranted else { completion?(); return }
         guard !candidatesAreEmpty(target) else { completion?(); return }
         guard !isApplyingLayout, !isRestoringLayout else { completion?(); return }
@@ -511,6 +600,7 @@ final class MenuBarItemStore: ObservableObject {
         captureTask?.cancel()
         captureTask = Task { [weak self] in
             guard let self else { return }
+            let presentationBefore = self.refreshPresentation()
             let images: [String: NSImage]
             if let capture = self.captureOverride { images = await capture(candidates) }
             else { images = await self.captureService.capture(candidates) }
@@ -518,15 +608,18 @@ final class MenuBarItemStore: ObservableObject {
             self.captureTask = nil
             self.isCapturing = false
             for (id, image) in images {
-                self.items.first(where: { $0.id == id })?.iconImage = image
+                guard let item = self.items.first(where: { $0.id == id }) else { continue }
+                if item.iconImage !== image { item.iconImage = image }
             }
             let availableCount = self.items.filter { $0.iconImage != nil }.count
-            self.iconCaptureMessage = self.items.isEmpty
+            let captureMessage = self.items.isEmpty
                 ? nil
                 : self.language.text("store.capture.count", availableCount, self.items.count)
-            self.isReadyForManagedLayout = self.selectedItems.allSatisfy(\.hasUsableDisplayIcon)
+            if self.iconCaptureMessage != captureMessage { self.iconCaptureMessage = captureMessage }
+            let ready = self.selectedItems.allSatisfy(\.hasUsableDisplayIcon)
+            if self.isReadyForManagedLayout != ready { self.isReadyForManagedLayout = ready }
             DiagnosticLog.shared.record("capture.result", ["requested": candidates.count, "captured": images.count])
-            self.objectWillChange.send()
+            self.publishRefreshCallbacksIfNeeded(previous: presentationBefore, itemsWereReplaced: false)
             completion?()
         }
     }
@@ -554,7 +647,7 @@ final class MenuBarItemStore: ObservableObject {
                 : language.text("store.preview.layout_disabled")
             return
         }
-        permissions.refresh()
+        permissions.refresh(updateTimestamp: false)
         guard !enabled || permissions.isReady else {
             layoutOperationMessage = language.text("store.permission.inactive")
             return
@@ -602,7 +695,7 @@ final class MenuBarItemStore: ObservableObject {
         if automatic && !MenuBarInteractionPolicy.allowsAutomaticLayout(
             hasTemporarilyVisibleItems: !temporarilyVisibleItemIDs.isEmpty
         ) { return }
-        permissions.refresh()
+        permissions.refresh(updateTimestamp: false)
         guard permissions.isReady else {
             layoutOperationMessage = language.text("store.permission.not_ready")
             return
@@ -615,11 +708,27 @@ final class MenuBarItemStore: ObservableObject {
             if !automatic { shouldApplyLayoutAgain = true }
             return
         }
-        // Never begin a WindowServer status-item move while the user is in the
-        // middle of a real click or drag.
-        if CGEventSource.buttonState(.combinedSessionState, button: .left) ||
-            CGEventSource.buttonState(.combinedSessionState, button: .right) {
-            scheduleLayoutRetry(after: 0.2)
+        let planned = selectedItems
+        let needed = planned.filter(visibilityOverride ?? layoutManager.isVisible).count
+        if needed == 0 {
+            failedLayoutIDs.subtract(planned.map(\.id))
+            if !automatic { automaticLayoutSuspended = false }
+            layoutOperationMessage = language.text("store.layout.correct")
+            DiagnosticLog.shared.record("layout.noop", ["automatic": automatic ? 1 : 0,
+                "selected": planned.count])
+            return
+        }
+        let leftButtonPressed = CGEventSource.buttonState(.combinedSessionState, button: .left)
+        let rightButtonPressed = CGEventSource.buttonState(.combinedSessionState, button: .right)
+        if MenuBarInteractionPolicy.shouldDeferLayout(
+            isAutomatic: automatic,
+            leftButtonPressed: leftButtonPressed,
+            rightButtonPressed: rightButtonPressed
+        ) {
+            DiagnosticLog.shared.record("layout.deferred_input", [
+                "left": leftButtonPressed ? 1 : 0,
+                "right": rightButtonPressed ? 1 : 0
+            ])
             return
         }
         automaticLayoutWorkItem?.cancel()
@@ -630,9 +739,7 @@ final class MenuBarItemStore: ObservableObject {
         onLayoutOperationStateChanged?(true)
         layoutStartGeneration += 1
         let startGeneration = layoutStartGeneration
-        let planned = selectedItems
         failedLayoutIDs.subtract(planned.map(\.id))
-        let needed = planned.filter(visibilityOverride ?? layoutManager.isVisible).count
         let wasActive = isHiddenSectionActive
         DiagnosticLog.shared.record("layout.begin", ["transaction": startGeneration, "automatic": automatic ? 1 : 0,
             "selected": planned.count, "visible": needed])
@@ -857,7 +964,7 @@ final class MenuBarItemStore: ObservableObject {
             lastActivationError = language.text("store.activation.busy")
             return
         }
-        permissions.refresh()
+        permissions.refresh(updateTimestamp: false)
         guard permissions.accessibilityGranted else {
             lastActivationError = language.text("store.activation.permission")
             return

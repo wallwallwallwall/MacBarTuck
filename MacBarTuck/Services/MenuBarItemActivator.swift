@@ -189,7 +189,8 @@ final class MenuBarItemActivator {
             return CGPoint(x: exact.frame.midX, y: exact.frame.midY)
         }
         guard item.axElement != nil else { return nil }
-        if #available(macOS 27.0, *), isValidMenuBarPoint(CGPoint(x: item.frame.midX, y: item.frame.midY)) {
+        if MenuBarPlatformPolicy.current.movement == .accessibility,
+           isValidMenuBarPoint(CGPoint(x: item.frame.midX, y: item.frame.midY)) {
             // A composite macOS 27 host may not publish a small layer-25
             // window at all. The AX element's current frame is the safer
             // coordinate for an already-visible context-menu click.

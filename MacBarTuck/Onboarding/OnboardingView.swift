@@ -95,7 +95,7 @@ struct OnboardingView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: step)
         .task {
             while !Task.isCancelled {
-                permissions.refresh()
+                permissions.refresh(updateTimestamp: false)
                 try? await Task.sleep(for: .seconds(2))
             }
         }

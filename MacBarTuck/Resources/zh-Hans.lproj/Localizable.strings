@@ -70,6 +70,8 @@
 "items.search" = "搜索菜单项";
 "items.search.clear" = "清除搜索";
 "items.rescan" = "重新扫描";
+"items.apply" = "应用显示方式";
+"items.apply.help" = "按当前选择统一收纳菜单栏项目";
 "items.all_automatic" = "全部设为自动";
 "items.show_all" = "全部显示";
 "items.retuck_temporary" = "重新收纳临时显示项（%d）";
@@ -119,6 +121,7 @@
 "panel.help" = "MacBarTuck 托盘";
 "panel.empty" = "没有已收起的项目";
 "panel.not_hidden" = "尚未成功收起";
+"panel.tucked.count" = "已收纳 %d 项";
 "panel.retuck" = "重新收纳";
 "panel.retuck.count" = "重新收纳 %d 项";
 "panel.temporary.help" = "此项目已临时显示在菜单栏；使用完后可统一重新收纳";
@@ -155,6 +158,7 @@
 "store.permission.not_ready" = "权限未就绪，未执行菜单栏移动。";
 "store.layout.waiting_icons" = "正在等待所选图标准备完成，暂未应用布局。";
 "store.layout.applying" = "正在应用收纳布局…";
+"store.layout.changes_pending" = "显示方式已保存，点击“应用显示方式”统一收纳。";
 "store.layout.updated" = "收纳布局已更新，移动了 %d 个项目。";
 "store.layout.correct" = "当前项目均已处于正确位置。";
 "store.layout.partial" = "部分项目未能收起，已停止自动重试。可在通用页查看日志。";

@@ -70,6 +70,8 @@
 "items.search" = "Search Menu Items";
 "items.search.clear" = "Clear Search";
 "items.rescan" = "Scan Again";
+"items.apply" = "Apply Display Modes";
+"items.apply.help" = "Tuck menu bar items using the selected display modes";
 "items.all_automatic" = "Set All to Automatic";
 "items.show_all" = "Show All";
 "items.retuck_temporary" = "Retuck Temporarily Visible Items (%d)";
@@ -119,6 +121,7 @@
 "panel.help" = "MacBarTuck Tray";
 "panel.empty" = "No Tucked Items";
 "panel.not_hidden" = "Items Have Not Been Tucked Yet";
+"panel.tucked.count" = "%d Tucked";
 "panel.retuck" = "Retuck";
 "panel.retuck.count" = "Retuck: %d";
 "panel.temporary.help" = "This item is temporarily visible in the menu bar. Retuck visible items when finished.";
@@ -155,6 +158,7 @@
 "store.permission.not_ready" = "Permissions are not ready, so no menu bar items were moved.";
 "store.layout.waiting_icons" = "Waiting for selected icons to finish loading before applying the layout.";
 "store.layout.applying" = "Applying the tucked layout…";
+"store.layout.changes_pending" = "Display modes saved. Choose Apply Display Modes to tuck the selected items.";
 "store.layout.updated" = "Updated the tucked layout and moved %d items.";
 "store.layout.correct" = "All current items are already in the correct position.";
 "store.layout.partial" = "Some items could not be tucked. Automatic retries were stopped. Check the logs on the General page.";

@@ -33,8 +33,9 @@ private enum MenuBarRuntimeTests {
                    "Published owned IDs must not trigger rescans.")
         try separatorStates()
         try interactionPolicy()
+        try platformPolicies()
         try permissionRequests()
-        print("MenuBarRuntimeTests: 25 passed")
+        print("MenuBarRuntimeTests: 32 passed")
     }
 
     private static func separatorStates() throws {
@@ -118,6 +119,49 @@ private enum MenuBarRuntimeTests {
             !MenuBarInteractionPolicy.allowsAutomaticLayout(hasTemporarilyVisibleItems: true),
             "Background discovery must not retuck an item the user is still using."
         )
+        try expect(
+            !MenuBarInteractionPolicy.shouldDeferLayout(
+                isAutomatic: false,
+                leftButtonPressed: false,
+                rightButtonPressed: true
+            ),
+            "An explicit Apply action must not be blocked forever by stale global button state."
+        )
+        try expect(
+            MenuBarInteractionPolicy.shouldDeferLayout(
+                isAutomatic: true,
+                leftButtonPressed: true,
+                rightButtonPressed: false
+            ),
+            "A background layout must wait while the user is actively pressing a mouse button."
+        )
+        try expect(
+            !MenuBarInteractionPolicy.shouldDeferLayout(
+                isAutomatic: true,
+                leftButtonPressed: false,
+                rightButtonPressed: false
+            ),
+            "An idle background layout must remain eligible to run."
+        )
+    }
+
+    private static func platformPolicies() throws {
+        let macOS15 = MenuBarPlatformPolicy(majorVersion: 15)
+        let macOS26 = MenuBarPlatformPolicy(majorVersion: 26)
+        let macOS27 = MenuBarPlatformPolicy(majorVersion: 27)
+        let future = MenuBarPlatformPolicy(majorVersion: 28)
+
+        try expect(macOS15 == .init(discovery: .windowServerWithAccessibility,
+                                   movement: .hybrid, usesHiddenSection: true),
+                   "macOS 15 must retain the bounded AX enrichment compatibility path.")
+        try expect(macOS26 == .init(discovery: .windowServerOnly,
+                                   movement: .windowServer, usesHiddenSection: true),
+                   "macOS 26 must retain the verified Control Center-hosted WindowServer path.")
+        try expect(macOS27 == .init(discovery: .accessibilityPreferred,
+                                   movement: .accessibility, usesHiddenSection: false),
+                   "macOS 27 must avoid moving its composite menu-bar host as a window.")
+        try expect(future == macOS27,
+                   "Later releases must default to the safer macOS 27 accessibility strategy.")
     }
 
     private static func permissionRequests() throws {

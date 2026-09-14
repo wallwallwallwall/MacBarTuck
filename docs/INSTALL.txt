@@ -1,11 +1,11 @@
-MacBarTuck 0.1.12 安装说明
+MacBarTuck 0.1.15 安装说明
 
 1. 将 MacBarTuck.app 拖入 Applications 文件夹。
 2. 在“应用程序”中打开 MacBarTuck。
 3. 按首次启动引导授予辅助功能和屏幕录制权限。
 4. 若 macOS 提示应用来自未识别开发者，请在 Finder 中右键应用并选择“打开”。
 
-MacBarTuck 仅支持 Apple Silicon（arm64）和 macOS 15.0 或更高版本。
+MacBarTuck 仅支持 Apple Silicon（arm64）和 macOS 15.0 或更高版本，包含 macOS 27 兼容路径。
 请勿与 iBar、Bartender、Ice 等会移动菜单栏项目的工具同时运行。
 
 当前开源构建使用临时签名，尚未经过 Apple 公证。
@@ -16,3 +16,6 @@ MacBarTuck 仅支持 Apple Silicon（arm64）和 macOS 15.0 或更高版本。
 “定位当前应用”可以找到正在运行的那份程序，避免误授权到旧备份。
 
 可在“通用 → 语言”中切换中文或 English，修改立即生效并在下次启动时保留。
+
+设置菜单项时，先在“菜单项”页选择“自动 / 始终显示 / 收起”，再点击右上角“应用显示方式”。
+逐项选择只保存规则，不会立即移动菜单栏；“通用”页不再提供重复的菜单项操作。

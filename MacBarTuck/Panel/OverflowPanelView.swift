@@ -19,19 +19,15 @@ struct OverflowPanelView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var language: AppLanguageController
 
-    static let preferredHeight: CGFloat = 56
+    static let preferredHeight = MacBarTuckTrayLayout.preferredHeight
 
-    static let itemSlotWidth: CGFloat = 44
-    private static let itemSpacing: CGFloat = 2
-    private static let baseChromeWidth: CGFloat = 65
-    private static let retuckButtonWidth: CGFloat = 114
-    private static let retuckChromeWidth: CGFloat = retuckButtonWidth + 11
+    static let itemSlotWidth = MacBarTuckTrayLayout.itemSlotWidth
+    private static let itemSpacing = MacBarTuckTrayLayout.itemSpacing
+    private static let summaryWidth = MacBarTuckTrayLayout.summaryWidth
+    private static let retuckButtonWidth = MacBarTuckTrayLayout.retuckButtonWidth
 
     static func preferredWidth(itemCount: Int, showsRetuck: Bool) -> CGFloat {
-        let count = max(0, itemCount)
-        let itemWidth = CGFloat(count) * itemSlotWidth
-        let spacingWidth = CGFloat(max(0, count - 1)) * itemSpacing
-        return max(itemWidth + spacingWidth + baseChromeWidth + (showsRetuck ? retuckChromeWidth : 0), 154)
+        MacBarTuckTrayLayout.preferredWidth(itemCount: itemCount, showsRetuck: showsRetuck)
     }
 
     var body: some View {
@@ -47,42 +43,36 @@ struct OverflowPanelView: View {
 
     private var panelSurface: some View {
         HStack(spacing: 5) {
-            Image(systemName: "rectangle.stack.fill")
-                .font(.system(size: 14, weight: .semibold))
+            Label(language.text("panel.tucked.count", tuckedItemCount), systemImage: "rectangle.stack.fill")
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(MacBarTuckTheme.accentStrong)
-                .frame(width: 34, height: 34)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .frame(width: Self.summaryWidth, height: 32)
                 .background(MacBarTuckTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .help(language.text("panel.help"))
+                .accessibilityLabel(language.text("panel.tucked.count", tuckedItemCount))
 
             Rectangle()
                 .fill(MacBarTuckTheme.strongStroke)
-                .frame(width: 1, height: 28)
+                .frame(width: 1, height: 24)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Self.itemSpacing) {
-                    if store.overflowItems.isEmpty {
-                        Text(store.selectedItems.isEmpty ? language.text("panel.empty") : language.text("panel.not_hidden"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(MacBarTuckTheme.secondaryText)
-                            .padding(.horizontal, 10)
-                    }
-                    ForEach(store.overflowItems) { item in
-                        OverflowItemView(
-                            item: item,
-                            isTemporarilyVisible: store.isTemporarilyVisible(item),
-                            action: { onActivate(item) },
-                            rightAction: { onRightActivate(item) }
-                        )
-                    }
+            ViewThatFits(in: .horizontal) {
+                itemRow
+                    .fixedSize(horizontal: true, vertical: false)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    itemRow
                 }
-                .padding(.vertical, 3)
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+                .clipShape(Rectangle())
             }
-            .scrollBounceBehavior(.basedOnSize)
 
             if !store.temporarilyVisibleItems.isEmpty {
                 Rectangle()
                     .fill(MacBarTuckTheme.strongStroke)
-                    .frame(width: 1, height: 28)
+                    .frame(width: 1, height: 24)
 
                 Button(action: onRetuck) {
                     HStack(spacing: 5) {
@@ -95,7 +85,7 @@ struct OverflowPanelView: View {
                             .minimumScaleFactor(0.85)
                     }
                     .foregroundStyle(Color.black.opacity(0.78))
-                    .frame(width: Self.retuckButtonWidth, height: 34)
+                    .frame(width: Self.retuckButtonWidth, height: 32)
                     .background(MacBarTuckTheme.retuckAction, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -109,14 +99,37 @@ struct OverflowPanelView: View {
         }
         .padding(.horizontal, 7)
         .frame(height: Self.preferredHeight - 6)
-        .background(.ultraThinMaterial)
-        .background(MacBarTuckTheme.deepSurface.opacity(0.90))
+        .background(MacBarTuckTheme.traySurface)
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(MacBarTuckTheme.accent.opacity(0.42), lineWidth: 1)
+                .stroke(MacBarTuckTheme.trayStroke, lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .padding(3)
+    }
+
+    private var tuckedItemCount: Int {
+        store.overflowItems.filter { !store.isTemporarilyVisible($0) }.count
+    }
+
+    private var itemRow: some View {
+        HStack(spacing: Self.itemSpacing) {
+            if store.overflowItems.isEmpty {
+                Text(store.selectedItems.isEmpty ? language.text("panel.empty") : language.text("panel.not_hidden"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(MacBarTuckTheme.secondaryText)
+                    .padding(.horizontal, 10)
+            }
+            ForEach(store.overflowItems) { item in
+                OverflowItemView(
+                    item: item,
+                    isTemporarilyVisible: store.isTemporarilyVisible(item),
+                    action: { onActivate(item) },
+                    rightAction: { onRightActivate(item) }
+                )
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     private var panelTransition: AnyTransition {

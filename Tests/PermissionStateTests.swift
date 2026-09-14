@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 private struct Failure: Error, CustomStringConvertible { let description: String }
 
@@ -20,6 +21,12 @@ enum PermissionStateTests {
         )
         try require(permissions.effectiveCount == 0, "A new process without access must show 0/2.")
         try require(!permissions.isReady, "No access must block layout.")
+        var repeatedRefreshNotifications = 0
+        let refreshObserver = permissions.objectWillChange.sink { repeatedRefreshNotifications += 1 }
+        permissions.refresh(updateTimestamp: false)
+        try require(repeatedRefreshNotifications == 0,
+                    "An unchanged background permission check must not redraw every observing view.")
+        withExtendedLifetime(refreshObserver) {}
         accessibility = true
         permissions.refresh()
         try require(permissions.effectiveCount == 1 && !permissions.isReady, "Partial access must show 1/2.")
@@ -52,7 +59,7 @@ enum PermissionStateTests {
         acceptedScreenEffective = true
         accepted.refresh()
         try require(accepted.isReady && !accepted.screenRestartSuggested, "The restart hint must clear when access becomes effective.")
-        print("PermissionStateTests: 14 passed")
+        print("PermissionStateTests: 15 passed")
     }
 
     static func require(_ value: Bool, _ message: String) throws {

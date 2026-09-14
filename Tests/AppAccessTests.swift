@@ -88,6 +88,30 @@ private enum AppAccessTests {
         let alreadyHidden = DockVisibilityController(preferences: preferences, previewMode: false, language: language)
         alreadyHidden.applyInitialPolicy()
         try expect(alreadyHidden.errorMessage == nil, "Starting already hidden must not report a policy error.")
+
+        let panel = NSPanel(
+            contentRect: .init(x: 0, y: 0, width: 240, height: 50),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.appearance = NSAppearance(named: .aqua)
+        panel.isOpaque = true
+        panel.backgroundColor = .windowBackgroundColor
+        panel.contentView = NSView(frame: panel.contentRect(forFrameRect: panel.frame))
+        MacBarTuckTrayAppearance.apply(to: panel)
+        try expect(panel.appearance?.name == .darkAqua,
+                   "The real tray must use the same deterministic dark appearance as UI previews.")
+        try expect(panel.contentView?.appearance?.name == .darkAqua,
+                   "The tray content must inherit the deterministic dark appearance.")
+        try expect(!panel.isOpaque && panel.backgroundColor.alphaComponent == 0,
+                   "The borderless tray must not receive an opaque system-gray window background.")
+        try expect(MacBarTuckTrayLayout.preferredWidth(itemCount: 0, showsRetuck: false) >= 246,
+                   "The empty tray must leave room for its status summary and localized empty message.")
+        try expect(MacBarTuckTrayLayout.preferredWidth(itemCount: 5, showsRetuck: false) == 345,
+                   "Five tucked items must fit without falling back to a scroller.")
+        try expect(MacBarTuckTrayLayout.preferredWidth(itemCount: 5, showsRetuck: true) == 470,
+                   "Showing the retuck action must reserve a stable operation area.")
         print("AppAccessTests: \(checks) passed")
     }
 

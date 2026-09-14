@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quitApplication: { NSApp.terminate(nil) },
         permissionSummary: { [weak self] in
             guard let self else { return "" }
-            self.permissions.refresh()
+            self.permissions.refresh(updateTimestamp: false)
             return self.permissions.statusDetail
         },
         language: language

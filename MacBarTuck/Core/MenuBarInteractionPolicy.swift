@@ -18,4 +18,9 @@ enum MenuBarInteractionPolicy {
     static func allowsAutomaticLayout(hasTemporarilyVisibleItems: Bool) -> Bool {
         !hasTemporarilyVisibleItems
     }
+
+    static func shouldDeferLayout(isAutomatic: Bool, leftButtonPressed: Bool,
+                                  rightButtonPressed: Bool) -> Bool {
+        isAutomatic && (leftButtonPressed || rightButtonPressed)
+    }
 }
