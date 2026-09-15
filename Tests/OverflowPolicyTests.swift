@@ -61,6 +61,7 @@ private enum OverflowPolicyTests {
         try unconstrainedDisplaysDoNotMaskNotchConstraint()
         try rightSideDisplayItemsRemainVisible()
         try verticallyOffsetDisplayItemsRemainVisible()
+        try retinaInsetMenuBarItemsRemainVisible()
         try appKitCoordinateMenuBarItemsRemainVisible()
         try ordinaryWindowsAreRejected()
         try tinyFramesAreRejected()
@@ -68,7 +69,7 @@ private enum OverflowPolicyTests {
         try safetyPolicyNormalizesSpacingAndCase()
         try previewAutomaticRulesRespectAvoidanceToggle()
         try previewManualAndProtectedRulesTakePrecedence()
-        print("OverflowPolicyTests: 36 passed")
+        print("OverflowPolicyTests: 37 passed")
     }
 
     private static func alwaysHiddenWins() throws {
@@ -420,6 +421,16 @@ private enum OverflowPolicyTests {
             MenuBarGeometry.isVisibleMenuBarItem(item, displayBounds: [display]),
             true,
             "Menu-bar frames expressed in AppKit bottom-left coordinates must be recognized."
+        )
+    }
+
+    private static func retinaInsetMenuBarItemsRemainVisible() throws {
+        let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let item = CGRect(x: 1236, y: 4.5, width: 23, height: 24)
+        try expectEqual(
+            MenuBarGeometry.isVisibleMenuBarItem(item, displayBounds: [display]),
+            true,
+            "Retina AX frames inset by half a point must remain inside the menu-bar band."
         )
     }
 

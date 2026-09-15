@@ -73,6 +73,8 @@ final class StatusBarController: NSObject {
         statusItem.isVisible = true
         if MenuBarPlatformPolicy.current.usesHiddenSection {
             hiddenSectionItem.isVisible = true
+        } else {
+            withdrawHiddenSectionItem()
         }
         button?.image = Self.statusBarImage(language: language)
         button?.imagePosition = .imageOnly
@@ -125,6 +127,7 @@ final class StatusBarController: NSObject {
     private var statusHostsReady = false
     private func configureHiddenSectionItem() {
         hiddenSectionItem.button?.image = nil
+        hiddenSectionItem.button?.title = ""
         // Control Center rejects Command-drag drops into a disabled hosted
         // status item, even though the WindowServer target still exists.
         hiddenSectionItem.button?.cell?.isEnabled = true
@@ -163,8 +166,8 @@ final class StatusBarController: NSObject {
         hiddenSectionReflowWorkItem?.cancel()
         hiddenSectionReflowWorkItem = nil
         requestedHiddenSectionLength = 0
-        hiddenSectionItem.isVisible = false
         hiddenSectionItem.length = 0
+        withdrawHiddenSectionItem()
     }
 
     @objc private func togglePanel() {
@@ -237,10 +240,8 @@ final class StatusBarController: NSObject {
     private func updateHiddenSectionLength() {
         guard !isTerminating else { return }
         if !MenuBarPlatformPolicy.current.usesHiddenSection {
-            // macOS 27 owns the overflow slot and renders the menu bar as a
-            // composite host. Keeping a staging item would compete with it.
             hiddenSectionItem.length = 0
-            hiddenSectionItem.isVisible = false
+            withdrawHiddenSectionItem()
             requestedHiddenSectionLength = 0
             return
         }
@@ -259,14 +260,13 @@ final class StatusBarController: NSObject {
         hiddenSectionReflowWorkItem?.cancel()
 
         if desiredLength == 0 {
-            item.isVisible = false
             item.length = 0
+            withdrawHiddenSectionItem()
             publishStatusItemWindowIDs()
             return
         }
 
-        // Keep the separator identity while arranging, then expand it only
-        // after the move. Dropping before an expanded host is offscreen.
+        item.button?.cell?.isEnabled = true
         item.length = desiredLength
         item.isVisible = true
         let work = DispatchWorkItem { [weak self] in
@@ -275,6 +275,14 @@ final class StatusBarController: NSObject {
         }
         hiddenSectionReflowWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+    }
+
+    private func withdrawHiddenSectionItem() {
+        let key = "NSStatusItem Preferred Position \(hiddenSectionItem.autosaveName ?? "")"
+        let position = UserDefaults.standard.object(forKey: key)
+        hiddenSectionItem.isVisible = false
+        if let position { UserDefaults.standard.set(position, forKey: key) }
+        hiddenSectionItem.button?.cell?.isEnabled = false
     }
 
     private var hoverRevealEnabled: Bool {

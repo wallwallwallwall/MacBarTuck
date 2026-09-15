@@ -35,9 +35,11 @@ private enum MenuBarRuntimeTests {
         try separatorStates()
         try interactionPolicy()
         try platformPolicies()
+        try displayBoundsResolution()
+        try maskOverlayPlanning()
         try accessibilityDiscoveryValues()
         try permissionRequests()
-        print("MenuBarRuntimeTests: 47 passed")
+        print("MenuBarRuntimeTests: macOS 15/26/27 runtime policies passed")
     }
 
     private static func separatorStates() throws {
@@ -160,8 +162,8 @@ private enum MenuBarRuntimeTests {
                                    movement: .windowServer, usesHiddenSection: true),
                    "macOS 26 must retain the verified Control Center-hosted WindowServer path.")
         try expect(macOS27 == .init(discovery: .accessibilityPreferred,
-                                   movement: .accessibility, usesHiddenSection: false),
-                   "macOS 27 must avoid moving its composite menu-bar host as a window.")
+                                   movement: .maskOverlay, usesHiddenSection: false),
+                   "macOS 27 must conceal items in place without moving the composite menu bar.")
         try expect(macOS27.accessibilityMenuBarAttributeNames == ["AXExtrasMenuBar", "AXMenuBar"],
                    "macOS 27 must read status items from AXExtrasMenuBar before the application menu bar.")
         try expect(macOS15.usesWindowServerAccessibilitySeeds,
@@ -170,6 +172,125 @@ private enum MenuBarRuntimeTests {
                    "macOS 27 must build stable identities from AX items instead of dynamic WindowServer seeds.")
         try expect(future == macOS27,
                    "Later releases must default to the safer macOS 27 accessibility strategy.")
+        try expect(MenuBarMaskLayoutPolicy.liveGeometrySyncInterval == 0.25,
+                   "Live masks must follow dynamic status items within a quarter second.")
+    }
+
+    private static func displayBoundsResolution() throws {
+        let builtIn = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let external = CGRect(x: -1920, y: -98, width: 1920, height: 1080)
+        var fallbackReads = 0
+        let screenResult = MenuBarDisplayBounds.current(
+            readScreenBounds: { [builtIn, external] },
+            readFallbackBounds: {
+                fallbackReads += 1
+                return [CGRect(x: 0, y: 0, width: 800, height: 600)]
+            }
+        )
+        try expect(screenResult == [builtIn, external] && fallbackReads == 0,
+                   "NSScreen-backed bounds must be preferred without reading the fallback API.")
+
+        let fallbackResult = MenuBarDisplayBounds.current(
+            readScreenBounds: { [] },
+            readFallbackBounds: {
+                fallbackReads += 1
+                return [external]
+            }
+        )
+        try expect(fallbackResult == [external] && fallbackReads == 1,
+                   "CoreGraphics display enumeration must remain available as a bounded fallback.")
+
+        let normalizedScreenResult = MenuBarDisplayBounds.current(
+            readScreenBounds: { [.zero, builtIn, builtIn] },
+            readFallbackBounds: { [external] }
+        )
+        try expect(normalizedScreenResult == [builtIn],
+                   "Invalid or duplicate NSScreen bounds must not enter movement safety checks.")
+
+        let normalizedFallbackResult = MenuBarDisplayBounds.current(
+            readScreenBounds: { [.zero] },
+            readFallbackBounds: { [.null, external, external] }
+        )
+        try expect(normalizedFallbackResult == [external],
+                   "Fallback display bounds must use the same validation and de-duplication.")
+    }
+
+    private static func maskOverlayPlanning() throws {
+        let builtIn = MenuBarMaskDisplay(
+            id: 1,
+            quartzFrame: CGRect(x: 0, y: 0, width: 1_512, height: 982),
+            appKitFrame: CGRect(x: 0, y: 0, width: 1_512, height: 982),
+            menuBarHeight: 25
+        )
+        let external = MenuBarMaskDisplay(
+            id: 2,
+            quartzFrame: CGRect(x: -1_920, y: 0, width: 1_920, height: 1_080),
+            appKitFrame: CGRect(x: -1_920, y: -98, width: 1_920, height: 1_080),
+            menuBarHeight: 25
+        )
+        let source = CGRect(x: 1_200, y: 4.5, width: 28, height: 18)
+        let placements = MenuBarMaskLayoutPolicy.placements(
+            itemID: "utility",
+            representationFrames: [source],
+            displays: [builtIn, external]
+        )
+        try expect(placements.count == 2,
+                   "One discovered status item must produce a mask on every attached display.")
+        try expect(
+            placements.first(where: { $0.displayID == 1 })?.frame ==
+                CGRect(x: 1_199, y: 957, width: 30, height: 25),
+            "The built-in display mask must cover the full menu-bar slot in AppKit coordinates."
+        )
+        try expect(
+            placements.first(where: { $0.displayID == 2 })?.frame ==
+                CGRect(x: -313, y: 957, width: 30, height: 25),
+            "A missing external representation must be mirrored by its right-edge inset."
+        )
+
+        let explicitExternal = CGRect(x: -420, y: 3, width: 28, height: 19)
+        let explicitPlacements = MenuBarMaskLayoutPolicy.placements(
+            itemID: "utility",
+            representationFrames: [source, explicitExternal, explicitExternal],
+            displays: [builtIn, external]
+        )
+        try expect(explicitPlacements.count == 2,
+                   "Duplicate representations must not create duplicate overlay windows.")
+        try expect(
+            explicitPlacements.first(where: { $0.displayID == 2 })?.frame.minX == -421,
+            "An observed display-specific frame must win over an inferred mirror."
+        )
+
+        try expect(
+            MenuBarMaskLayoutPolicy.placements(
+                itemID: "invalid",
+                representationFrames: [CGRect(x: 100, y: 200, width: 30, height: 20)],
+                displays: [builtIn, external]
+            ).isEmpty,
+            "Ordinary windows outside the menu bar must never receive masks."
+        )
+
+        let current = Dictionary(uniqueKeysWithValues: placements.map { ($0.key, $0.frame) })
+        let noOp = MenuBarMaskLayoutPolicy.reconcile(current: current, desired: placements)
+        try expect(noOp.isNoOp,
+                   "An unchanged refresh must not move or recreate any mask window.")
+
+        var movedPlacements = placements
+        movedPlacements[0] = MenuBarMaskPlacement(
+            key: movedPlacements[0].key,
+            itemID: movedPlacements[0].itemID,
+            displayID: movedPlacements[0].displayID,
+            frame: movedPlacements[0].frame.offsetBy(dx: -8, dy: 0)
+        )
+        let moved = MenuBarMaskLayoutPolicy.reconcile(current: current, desired: movedPlacements)
+        try expect(moved.additions.isEmpty && moved.removals.isEmpty && moved.updates.count == 1,
+                   "A dynamic status title must update only the mask whose frame changed.")
+
+        let removed = MenuBarMaskLayoutPolicy.reconcile(
+            current: current,
+            desired: placements.filter { $0.displayID == 1 }
+        )
+        try expect(removed.removals.count == 1 && removed.additions.isEmpty,
+                   "Disconnecting a display must remove only its obsolete mask.")
     }
 
     private static func accessibilityDiscoveryValues() throws {

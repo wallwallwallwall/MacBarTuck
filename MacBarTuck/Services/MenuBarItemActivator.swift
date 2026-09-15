@@ -1,7 +1,18 @@
 import AppKit
 import ApplicationServices
 
-final class MenuBarItemActivator {
+protocol MenuBarItemActivating: AnyObject {
+    func activateDirectly(_ item: MenuBarItem) -> Bool
+    func activateViaAccessibilityHitTest(_ item: MenuBarItem) -> Bool
+    func activateMovedItem(
+        _ item: MenuBarItem,
+        mouseButton: CGMouseButton,
+        completion: @escaping (Bool) -> Void
+    )
+    func activateRightClick(_ item: MenuBarItem, completion: @escaping (Bool) -> Void)
+}
+
+final class MenuBarItemActivator: MenuBarItemActivating {
     private var relays: [MenuBarEventRelay] = []
     private let readWindows: () -> [[String: Any]]
 
@@ -189,7 +200,11 @@ final class MenuBarItemActivator {
             return CGPoint(x: exact.frame.midX, y: exact.frame.midY)
         }
         guard item.axElement != nil else { return nil }
-        if MenuBarPlatformPolicy.current.movement == .accessibility,
+        if let element = item.axElement, let frame = currentAXFrame(for: element) {
+            item.frame = frame
+        }
+        if [MenuBarMovementStrategy.accessibility, .maskOverlay]
+            .contains(MenuBarPlatformPolicy.current.movement),
            isValidMenuBarPoint(CGPoint(x: item.frame.midX, y: item.frame.midY)) {
             // A composite macOS 27 host may not publish a small layer-25
             // window at all. The AX element's current frame is the safer
@@ -216,11 +231,7 @@ final class MenuBarItemActivator {
     }
 
     private func activeDisplayBounds() -> [CGRect] {
-        var count: UInt32 = 0
-        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
-        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        guard CGGetActiveDisplayList(count, &displays, &count) == .success else { return [] }
-        return displays.prefix(Int(count)).map(CGDisplayBounds)
+        MenuBarDisplayBounds.current()
     }
 
     private func currentFrame(windowID: CGWindowID, ownerPID: pid_t) -> CGRect? {
@@ -231,6 +242,21 @@ final class MenuBarItemActivator {
         }),
               let frame = MenuBarWindowServer.bounds(in: window) else { return nil }
         return frame
+    }
+
+    private func currentAXFrame(for element: AXUIElement) -> CGRect? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &value) == .success,
+              let positionValue = value,
+              CFGetTypeID(positionValue) == AXValueGetTypeID() else { return nil }
+        var point = CGPoint.zero
+        AXValueGetValue(positionValue as! AXValue, .cgPoint, &point)
+        guard AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &value) == .success,
+              let sizeValue = value,
+              CFGetTypeID(sizeValue) == AXValueGetTypeID() else { return nil }
+        var size = CGSize.zero
+        AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+        return CGRect(origin: point, size: size)
     }
 
 }

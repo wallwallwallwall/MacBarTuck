@@ -1,4 +1,5 @@
 .DS_Store
+.build/
 .test-build/
 dist/
 work/

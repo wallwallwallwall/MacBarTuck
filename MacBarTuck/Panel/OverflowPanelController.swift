@@ -32,19 +32,30 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         panel.animationBehavior = .none
         panel.isReleasedWhenClosed = false
         panel.delegate = self
+        let store = self.store
+        let presentation = self.presentation
+        let activateAction: (MenuBarItem) -> Void = { [weak self] item in
+            self?.onItemActivation?()
+            self?.close()
+            self?.store.activate(item)
+        }
+        let rightActivateAction: (MenuBarItem) -> Void = { [weak self] item in
+            self?.onItemActivation?()
+            self?.close()
+            self?.store.activate(item, mouseButton: .right)
+        }
+        let retuckAction: () -> Void = { [weak self] in
+            self?.close()
+            self?.store.retuckTemporarilyVisibleItems()
+        }
         panel.contentView = NSHostingView(rootView: AppLocalizedRoot(language: language) {
-            OverflowPanelView(store: self.store, presentation: self.presentation, onActivate: { [weak self] item in
-                self?.onItemActivation?()
-                self?.close()
-                self?.store.activate(item)
-            }, onRightActivate: { [weak self] item in
-                self?.onItemActivation?()
-                self?.close()
-                self?.store.activate(item, mouseButton: .right)
-            }, onRetuck: { [weak self] in
-                self?.close()
-                self?.store.retuckTemporarilyVisibleItems()
-            })
+            OverflowPanelView(
+                store: store,
+                presentation: presentation,
+                onActivate: activateAction,
+                onRightActivate: rightActivateAction,
+                onRetuck: retuckAction
+            )
         })
         MacBarTuckTrayAppearance.apply(to: panel)
         panel.orderOut(nil)

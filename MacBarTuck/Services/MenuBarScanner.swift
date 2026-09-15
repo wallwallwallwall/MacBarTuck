@@ -69,6 +69,7 @@ final class MenuBarScanner {
     ) -> [MenuBarItem] {
         var results = initialResults
         let ownBundleID = ownBundleIdentifier
+        let displays = displayBounds()
         for app in NSWorkspace.shared.runningApplications {
             guard let bundleID = app.bundleIdentifier, bundleID != ownBundleID else { continue }
             let identity = applicationResolver.resolve(bundleIdentifier: bundleID)
@@ -125,10 +126,13 @@ final class MenuBarScanner {
                     let existing = results[matchingIndex]
                     existing.axElement = child
                     existing.supportsPressAction = supportsPress
+                    existing.ownerPID = app.processIdentifier
+                    existing.sourceDisplayBounds = displays.first { $0.intersects(frame) }
                     if existing.isProtectedSystemItem { continue }
                     existing.title = title
                     existing.ownerName = identity?.displayName ?? app.localizedName ?? bundleID
                     existing.bundleIdentifier = identity?.bundleIdentifier ?? bundleID
+                    existing.menuBarHostBundleIdentifier = bundleID
                     if MenuBarSystemItemClassifier.isInputSourceAgent(title, owner: bundleID) {
                         existing.resolvedTitle = "Input Source"
                         existing.resolvedApplicationIcon = nil
@@ -160,8 +164,11 @@ final class MenuBarScanner {
                         : (identity?.icon ?? app.icon),
                     isSelected: !isProtected && (selectedIDs.contains(id) || !selectedIDs.isDisjoint(with: legacyIDs)),
                     supportsPressAction: supportsPress,
-                    isProtectedSystemItem: isProtected
+                    ownerPID: app.processIdentifier,
+                    isProtectedSystemItem: isProtected,
+                    menuBarHostBundleIdentifier: bundleID
                 )
+                item.sourceDisplayBounds = displays.first { $0.intersects(frame) }
                 item.legacyIDs = legacyIDs
                 item.resolvedTitle = MenuBarSystemItemClassifier.isInputSourceAgent(title, owner: bundleID)
                     ? "Input Source"
@@ -179,7 +186,7 @@ final class MenuBarScanner {
         // Hidden-section items are deliberately moved offscreen. They must
         // remain in the settings and overflow panel when either is refreshed.
         let windows = readWindows()
-        let candidates: [(identifier: Int, ownerPID: Int, title: String, owner: String, ownerKey: String, appIcon: NSImage?, frame: CGRect)] = windows.compactMap { window in
+        let candidates: [(identifier: Int, ownerPID: Int, title: String, owner: String, ownerKey: String, hostBundleIdentifier: String?, appIcon: NSImage?, frame: CGRect)] = windows.compactMap { window in
             guard MenuBarWindowServer.isStatusItemLayer(window),
                   let bounds = MenuBarWindowServer.bounds(in: window),
                   let identifier = MenuBarWindowServer.integer(kCGWindowNumber as String, in: window),
@@ -207,7 +214,10 @@ final class MenuBarScanner {
             let displayOwner = ownerKey == "Control Center" ? owner : (runningIdentity?.displayName ?? owner)
             let frame = bounds
             guard isMenuBarWindowFrame(frame), frame.width > 4, frame.height > 4, frame.height <= 40 else { return nil }
-            return (identifier, ownerPID, title, displayOwner, ownerKey, applicationIcon, frame)
+            let hostBundleIdentifier = runningApp?.bundleIdentifier ??
+                (Self.looksLikeBundleIdentifier(title) ? title : nil)
+            return (identifier, ownerPID, title, displayOwner, ownerKey,
+                    hostBundleIdentifier, applicationIcon, frame)
         }
         var occurrences: [String: Int] = [:]
         var legacyOccurrences: [String: Int] = [:]
@@ -236,7 +246,7 @@ final class MenuBarScanner {
             let legacyID = "window|\(candidate.title)|\(legacyOccurrence)"
             let isSelected = selectedIDs.contains(id) || selectedIDs.contains(alternateID) || selectedIDs.contains(legacyID) || (isProtected && isHiddenMenuBarFrame(candidate.frame))
             let displayTitle = candidate.title == "Item-0" ? "Menu Bar Item" : title
-            return MenuBarItem(id: id, title: displayTitle, ownerName: isProtected ? "System Menu Bar" : candidate.owner, bundleIdentifier: candidate.ownerKey, frame: candidate.frame, axElement: nil, applicationIcon: candidate.appIcon, isSelected: isSelected, supportsPressAction: false, windowID: CGWindowID(candidate.identifier), ownerPID: pid_t(candidate.ownerPID), isProtectedSystemItem: isProtected)
+            return MenuBarItem(id: id, title: displayTitle, ownerName: isProtected ? "System Menu Bar" : candidate.owner, bundleIdentifier: candidate.ownerKey, frame: candidate.frame, axElement: nil, applicationIcon: candidate.appIcon, isSelected: isSelected, supportsPressAction: false, windowID: CGWindowID(candidate.identifier), ownerPID: pid_t(candidate.ownerPID), isProtectedSystemItem: isProtected, menuBarHostBundleIdentifier: candidate.hostBundleIdentifier)
         }
         return resolveMirrors(items, windows: windows)
     }
@@ -348,6 +358,15 @@ final class MenuBarScanner {
     private static func isAnonymousTitle(_ title: String) -> Bool {
         let value = title.replacingOccurrences(of: " ", with: "").lowercased()
         return value.isEmpty || value.hasPrefix("item-") || ["menubaritem", "statusitem", "statusmenu"].contains(value)
+    }
+
+    private static func looksLikeBundleIdentifier(_ value: String) -> Bool {
+        let components = value.split(separator: ".")
+        return components.count >= 3 && components.allSatisfy { component in
+            !component.isEmpty && component.allSatisfy {
+                $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_"
+            }
+        }
     }
 
     /// A position-independent fingerprint used to notice status-item creation,
@@ -493,11 +512,7 @@ final class MenuBarScanner {
     }
 
     static func activeDisplayBounds() -> [CGRect] {
-        var count: UInt32 = 0
-        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
-        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        guard CGGetActiveDisplayList(count, &displays, &count) == .success else { return [] }
-        return displays.prefix(Int(count)).map(CGDisplayBounds)
+        MenuBarDisplayBounds.current()
     }
 
     private func stringAttribute(_ element: AXUIElement, _ attribute: CFString) -> String? {

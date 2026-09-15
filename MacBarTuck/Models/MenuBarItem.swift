@@ -67,6 +67,7 @@ final class MenuBarItem: Identifiable {
     var title: String
     var ownerName: String
     var bundleIdentifier: String?
+    var menuBarHostBundleIdentifier: String?
     var frame: CGRect
     private(set) var restorationFrame: CGRect
     var axElement: AXUIElement?
@@ -85,11 +86,18 @@ final class MenuBarItem: Identifiable {
     var resolvedApplicationIcon: NSImage?
     var visibility: MenuItemVisibility = .unknown
 
-    func updateVisibility(displayBounds: [CGRect], currentFrames: [CGWindowID: CGRect]? = nil) {
+    func updateVisibility(
+        displayBounds: [CGRect],
+        currentFrames: [CGWindowID: CGRect]? = nil,
+        frameProvider: ((MenuBarItem) -> CGRect?)? = nil
+    ) {
         visibility = MenuItemVisibility.evaluate(windowRepresentations.map { representation -> Bool? in
             let frame: CGRect
             if let currentFrames, let id = representation.windowID {
                 guard let current = currentFrames[id] else { return nil }
+                frame = current
+            } else if let frameProvider {
+                guard let current = frameProvider(representation) else { return nil }
                 frame = current
             } else { frame = representation.frame }
             guard frame.width > 4, frame.height > 4 else { return nil }
@@ -98,11 +106,12 @@ final class MenuBarItem: Identifiable {
         })
     }
 
-    init(id: String, title: String, ownerName: String, bundleIdentifier: String?, frame: CGRect, axElement: AXUIElement?, iconImage: NSImage? = nil, applicationIcon: NSImage? = nil, isSelected: Bool, supportsPressAction: Bool, windowID: CGWindowID? = nil, ownerPID: pid_t? = nil, isProtectedSystemItem: Bool = false, rule: MenuItemRule = .automatic) {
+    init(id: String, title: String, ownerName: String, bundleIdentifier: String?, frame: CGRect, axElement: AXUIElement?, iconImage: NSImage? = nil, applicationIcon: NSImage? = nil, isSelected: Bool, supportsPressAction: Bool, windowID: CGWindowID? = nil, ownerPID: pid_t? = nil, isProtectedSystemItem: Bool = false, rule: MenuItemRule = .automatic, menuBarHostBundleIdentifier: String? = nil) {
         self.id = id
         self.title = title
         self.ownerName = ownerName
         self.bundleIdentifier = bundleIdentifier
+        self.menuBarHostBundleIdentifier = menuBarHostBundleIdentifier
         self.frame = frame
         restorationFrame = frame
         self.axElement = axElement
@@ -206,7 +215,8 @@ final class MenuBarItem: Identifiable {
                                  axElement: source.axElement, iconImage: iconImage,
                                  applicationIcon: applicationIcon, isSelected: isSelected,
                                  supportsPressAction: source.supportsPressAction, windowID: source.windowID,
-                                 ownerPID: source.ownerPID, isProtectedSystemItem: isProtectedSystemItem, rule: rule)
+                                 ownerPID: source.ownerPID, isProtectedSystemItem: isProtectedSystemItem, rule: rule,
+                                 menuBarHostBundleIdentifier: source.menuBarHostBundleIdentifier)
         target.sourceDisplayBounds = source.sourceDisplayBounds
         target.resolvedTitle = resolvedTitle
         target.resolvedApplicationIcon = resolvedApplicationIcon
@@ -250,6 +260,7 @@ final class MenuBarItem: Identifiable {
         title = scanned.title
         ownerName = scanned.ownerName
         bundleIdentifier = scanned.bundleIdentifier
+        menuBarHostBundleIdentifier = scanned.menuBarHostBundleIdentifier
         frame = scanned.frame
         axElement = scanned.axElement
         supportsPressAction = scanned.supportsPressAction
@@ -263,6 +274,10 @@ final class MenuBarItem: Identifiable {
         resolvedTitle = scanned.resolvedTitle
         resolvedApplicationIcon = scanned.resolvedApplicationIcon
         if let captured = scanned.iconImage { iconImage = captured }
+    }
+
+    func markMaskedHidden() {
+        visibility = .hidden
     }
 
     private func localized(_ key: String, language: AppLanguage, _ arguments: CVarArg...) -> String {

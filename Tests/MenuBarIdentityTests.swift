@@ -52,6 +52,18 @@ private enum MenuBarIdentityTests {
         try expect(utility.visibility == .hidden, "Fresh WindowServer bounds must determine hidden state.")
         utility.updateVisibility(displayBounds: displays, currentFrames: [5: outside])
         try expect(utility.visibility == .unknown, "Disappeared mirrors invalidate the hidden claim.")
+
+        let axItem = MenuBarItem(id: "ax-item", title: "Utility", ownerName: "Utility",
+                                 bundleIdentifier: "com.example.utility",
+                                 frame: CGRect(x: -255, y: 2, width: 23, height: 24),
+                                 axElement: nil, isSelected: true, supportsPressAction: true)
+        axItem.sourceDisplayBounds = displays[1]
+        axItem.updateVisibility(displayBounds: displays, frameProvider: { _ in outside })
+        try expect(axItem.visibility == .hidden,
+                   "A live AX frame outside the leftmost display must confirm hidden state.")
+        axItem.updateVisibility(displayBounds: displays, frameProvider: { _ in nil })
+        try expect(axItem.visibility == .unknown,
+                   "A missing live AX frame must not reuse a stale frame to claim success.")
     }
 
     private static func stableMirrorIdentity() throws {
@@ -321,6 +333,8 @@ private enum MenuBarIdentityTests {
         let scanned = scanner.scan(selectedIDs: []).first
         try expect(scanned?.displayTitle(for: .english) == "Tencent Lemon",
                    "Window-backed helper items must expose the outer application name.")
+        try expect(scanned?.menuBarHostBundleIdentifier == "com.tencent.LemonMonitor",
+                   "The real menu-bar host must stay separate from the outer application identity.")
         try expect(scanned?.displayImage === outerIcon,
                    "Window-backed helper items must expose the cached outer application icon.")
         try expect(MenuBarApplicationIdentityResolver.declaresApplicationIcon([

@@ -10,6 +10,7 @@ enum MenuBarMovementStrategy: Equatable {
     case hybrid
     case windowServer
     case accessibility
+    case maskOverlay
 }
 
 struct MenuBarPlatformPolicy: Equatable {
@@ -27,7 +28,7 @@ struct MenuBarPlatformPolicy: Equatable {
     init(majorVersion: Int) {
         switch majorVersion {
         case 27...:
-            self.init(discovery: .accessibilityPreferred, movement: .accessibility,
+            self.init(discovery: .accessibilityPreferred, movement: .maskOverlay,
                       usesHiddenSection: false)
         case 26:
             self.init(discovery: .windowServerOnly, movement: .windowServer,

@@ -96,11 +96,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.isMovableByWindowBackground = true
             window.appearance = NSAppearance(named: .darkAqua)
             window.contentMinSize = .init(width: 760, height: 560)
+            let store = self.store
+            let dockVisibility = self.dockVisibility
+            let restartAction: () -> Void = { [weak self] in
+                self?.restartApplication()
+            }
+            let onboardingAction: () -> Void = { [weak self] in
+                self?.showOnboarding()
+            }
             window.contentView = NSHostingView(rootView: AppLocalizedRoot(language: language) {
-                SettingsView(store: self.store, dockVisibility: self.dockVisibility,
-                    restartApplication: { [weak self] in self?.restartApplication() }, showOnboarding: { [weak self] in
-                    self?.showOnboarding()
-                })
+                SettingsView(store: store, dockVisibility: dockVisibility,
+                    restartApplication: restartAction, showOnboarding: onboardingAction)
             })
             window.center()
             let controller = NSWindowController(window: window)
@@ -157,19 +163,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: .darkAqua)
             window.contentMinSize = .init(width: 680, height: 500)
+            let store = self.store
+            let permissions = self.permissions
+            let initialHideSelectedIcons = preferences.hasCompletedOnboarding
+                ? store.layoutManagementEnabled
+                : true
+            let completionAction: (Bool) -> Void = { [weak self] hideSelectedIcons in
+                guard let self else { return }
+                if self.store.isUIPreviewMode {
+                    self.onboardingWindowController?.close()
+                    return
+                }
+                self.completeOnboarding(hideSelectedIcons: hideSelectedIcons)
+            }
             window.contentView = NSHostingView(rootView: AppLocalizedRoot(language: language) {
                 OnboardingView(
-                    store: self.store,
-                    permissions: self.permissions,
-                    initialHideSelectedIcons: self.preferences.hasCompletedOnboarding ? self.store.layoutManagementEnabled : true,
-                    onComplete: { [weak self] hideSelectedIcons in
-                        guard let self else { return }
-                        if self.store.isUIPreviewMode {
-                            self.onboardingWindowController?.close()
-                            return
-                        }
-                        self.completeOnboarding(hideSelectedIcons: hideSelectedIcons)
-                    }
+                    store: store,
+                    permissions: permissions,
+                    initialHideSelectedIcons: initialHideSelectedIcons,
+                    onComplete: completionAction
                 )
             })
             window.center()
@@ -228,7 +240,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard store.layoutManagementEnabled, !store.selectedItems.isEmpty else { return .terminateNow }
+        let needsRestore = store.hasActiveMaskOverlay ||
+            (store.layoutManagementEnabled && !store.selectedItems.isEmpty)
+        guard needsRestore else { return .terminateNow }
         guard !isFinishingTermination else { return .terminateLater }
         isFinishingTermination = true
         didReplyToTermination = false

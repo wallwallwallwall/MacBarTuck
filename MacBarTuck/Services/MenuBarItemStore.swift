@@ -19,17 +19,20 @@ final class MenuBarItemStore: ObservableObject {
     @Published private(set) var requiresScreenRecording = false
     @Published private(set) var temporarilyVisibleItemIDs = Set<String>()
     private(set) var isHiddenSectionActive = false
+    private(set) var maskedItemIDs = Set<String>()
     let isUIPreviewMode: Bool
 
     private let logger = Logger(subsystem: "com.bartuck.app", category: "items")
     private let preferences: PreferencesStore
     private let scanner: MenuBarScanner
+    private let platformPolicy: MenuBarPlatformPolicy
     private let captureOverride: (([MenuBarItem]) async -> [String: NSImage])?
-    private let visibilityOverride: ((MenuBarItem) -> Bool)?
+    private let visibilityOverride: ((MenuBarItem) -> MenuItemVisibility)?
     typealias HideHandler = ([MenuBarItem], CGRect, @escaping (Int) -> Void) -> Void
     private let hideOverride: HideHandler?
+    private let maskingController: MenuBarMaskingController
     private let captureService = MenuBarCaptureService()
-    private let activator = MenuBarItemActivator()
+    private let activator: any MenuBarItemActivating
     private let layoutManager: MenuBarLayoutManager
     private var ownedStatusWindowIDs: Set<CGWindowID> = []
     private var controlItemFrame: CGRect?
@@ -40,6 +43,7 @@ final class MenuBarItemStore: ObservableObject {
     private var refreshWorkItem: DispatchWorkItem?
     private var captureTask: Task<Void, Never>?
     private var monitorTimer: Timer?
+    private var maskGeometryTimer: Timer?
     private var screenObserver: NSObjectProtocol?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var lastWindowSignature = Set<String>()
@@ -60,6 +64,7 @@ final class MenuBarItemStore: ObservableObject {
         let title: String
         let ownerName: String
         let bundleIdentifier: String?
+        let menuBarHostBundleIdentifier: String?
         let resolvedTitle: String?
         let isSelected: Bool
         let rule: MenuItemRule
@@ -92,14 +97,21 @@ final class MenuBarItemStore: ObservableObject {
          language: AppLanguageController = .shared,
          scanner: MenuBarScanner = MenuBarScanner(),
          captureOverride: (([MenuBarItem]) async -> [String: NSImage])? = nil,
-         visibilityOverride: ((MenuBarItem) -> Bool)? = nil, hideOverride: HideHandler? = nil) {
+         platformPolicy: MenuBarPlatformPolicy = .current,
+         visibilityOverride: ((MenuBarItem) -> MenuItemVisibility)? = nil,
+         hideOverride: HideHandler? = nil,
+         maskingController: MenuBarMaskingController? = nil,
+         activator: any MenuBarItemActivating = MenuBarItemActivator()) {
         self.language = language
         self.permissions = permissions ?? PermissionManager(language: language)
         self.preferences = preferences
         self.scanner = scanner
+        self.platformPolicy = platformPolicy
         self.captureOverride = captureOverride
         self.visibilityOverride = visibilityOverride
         self.hideOverride = hideOverride
+        self.maskingController = maskingController ?? MenuBarMaskingController()
+        self.activator = activator
         isUIPreviewMode = ProcessInfo.processInfo.arguments.contains("--ui-preview")
         layoutManager = MenuBarLayoutManager(preferences: preferences)
         layoutManagementEnabled = layoutManager.isEnabled
@@ -109,6 +121,7 @@ final class MenuBarItemStore: ObservableObject {
 
     deinit {
         monitorTimer?.invalidate()
+        maskGeometryTimer?.invalidate()
         refreshWorkItem?.cancel()
         layoutWorkItem?.cancel()
         layoutStartWorkItem?.cancel()
@@ -146,19 +159,25 @@ final class MenuBarItemStore: ObservableObject {
         isApplyingLayout || isRestoringLayout || activatingItemID != nil || isTerminating
     }
 
+    var hasActiveMaskOverlay: Bool {
+        platformPolicy.movement == .maskOverlay && !maskedItemIDs.isEmpty
+    }
+
     func isTemporarilyVisible(_ item: MenuBarItem) -> Bool {
         temporarilyVisibleItemIDs.contains(item.id)
     }
 
     func visibilityDescription(for item: MenuBarItem) -> String {
         if isTemporarilyVisible(item) { return language.text("items.visibility.temporary") }
+        if item.isSelected && failedLayoutIDs.contains(item.id) {
+            return language.text("items.visibility.failed")
+        }
         switch item.visibility {
         case .hidden: return language.text("items.visibility.hidden")
         case .partial: return language.text("items.visibility.partial")
         case .unknown: return language.text("items.visibility.unknown")
         case .visible:
             if !item.isSelected { return language.text("items.visibility.visible") }
-            if failedLayoutIDs.contains(item.id) { return language.text("items.visibility.failed") }
             return layoutManagementEnabled
                 ? language.text("items.visibility.pending")
                 : language.text("items.visibility.disabled")
@@ -172,7 +191,19 @@ final class MenuBarItemStore: ObservableObject {
                   number > 0, number <= Int(CGWindowID.max), let frame = MenuBarWindowServer.bounds(in: info) else { return nil }
             return (CGWindowID(number), frame)
         }, uniquingKeysWith: { first, _ in first })
-        for item in items { item.updateVisibility(displayBounds: displays.map(\.frame), currentFrames: frames) }
+        for item in items {
+            if platformPolicy.movement == .maskOverlay,
+               maskedItemIDs.contains(item.id),
+               !temporarilyVisibleItemIDs.contains(item.id) {
+                item.markMaskedHidden()
+            } else {
+                item.updateVisibility(
+                    displayBounds: displays.map(\.frame),
+                    currentFrames: frames,
+                    frameProvider: layoutManager.currentFrame(for:)
+                )
+            }
+        }
         reconcileTemporarilyVisibleItems()
         publishRefreshCallbacksIfNeeded(previous: presentationBefore, itemsWereReplaced: false)
     }
@@ -195,6 +226,7 @@ final class MenuBarItemStore: ObservableObject {
                     title: item.title,
                     ownerName: item.ownerName,
                     bundleIdentifier: item.bundleIdentifier,
+                    menuBarHostBundleIdentifier: item.menuBarHostBundleIdentifier,
                     resolvedTitle: item.resolvedTitle,
                     isSelected: item.isSelected,
                     rule: item.rule,
@@ -264,6 +296,17 @@ final class MenuBarItemStore: ObservableObject {
         RunLoop.main.add(timer, forMode: .common)
         monitorTimer = timer
 
+        if platformPolicy.movement == .maskOverlay {
+            let maskTimer = Timer(
+                timeInterval: MenuBarMaskLayoutPolicy.liveGeometrySyncInterval,
+                repeats: true
+            ) { [weak self] _ in
+                Task { @MainActor in self?.reconcileLiveMaskGeometry() }
+            }
+            RunLoop.main.add(maskTimer, forMode: .common)
+            maskGeometryTimer = maskTimer
+        }
+
         // Login items do not become ready at the same time. These bounded
         // rescans fill in late windows/icons without requiring user action.
         for delay in [0.8, 2.0, 5.0, 10.0] {
@@ -295,6 +338,21 @@ final class MenuBarItemStore: ObservableObject {
             captureTask?.cancel()
             captureTask = nil
             isCapturing = false
+            if platformPolicy.movement == .maskOverlay {
+                let maskedCount = maskedItemIDs.union(maskingController.maskedItemIDs).count
+                let removedWindows = maskingController.removeAll()
+                maskedItemIDs.removeAll()
+                failedLayoutIDs.removeAll()
+                temporarilyVisibleItemIDs.removeAll()
+                isHiddenSectionActive = false
+                automaticLayoutSuspended = false
+                if maskedCount > 0 || removedWindows > 0 {
+                    DiagnosticLog.shared.record("mask.permission_revoked", [
+                        "items": maskedCount,
+                        "windows": removedWindows
+                    ])
+                }
+            }
             if !items.isEmpty { items = [] }
             let latestDisplays = DisplaySnapshotProvider.snapshots()
             if displays != latestDisplays { displays = latestDisplays }
@@ -315,16 +373,13 @@ final class MenuBarItemStore: ObservableObject {
         let knownBefore = preferences.knownItemIDs
         let knownWindowIDsBefore = preferences.knownWindowIDs
         let selectedBefore = preferences.selectedIDs
-        let scanned = scanner.scan(selectedIDs: selectedBefore).filter { item in
-            guard let windowID = item.windowID else { return true }
-            return !ownedStatusWindowIDs.contains(windowID)
-        }
+        let scanned = visibleScannedItems(selectedIDs: selectedBefore)
         let currentIDs = Set(scanned.map(\.id))
         let currentWindowIDs = Set(scanned.compactMap(\.windowID))
         let latestDisplays = DisplaySnapshotProvider.snapshots()
         let displayBounds = latestDisplays.map(\.frame)
 
-        let merged = scanned.map { scannedItem -> MenuBarItem in
+        let refreshed = scanned.map { scannedItem -> MenuBarItem in
             if let previous = previousByID[scannedItem.id] {
                 previous.updateRuntimeState(from: scannedItem, displayBounds: displayBounds)
                 previous.rule = preferences.rule(for: previous)
@@ -334,7 +389,8 @@ final class MenuBarItemStore: ObservableObject {
             scannedItem.iconImage = previous?.iconImage
             scannedItem.rule = preferences.rule(for: scannedItem)
             return scannedItem
-        }.sorted {
+        }
+        let merged = refreshed.sorted {
             let left = previousOrder[$0.id] ?? Int.max
             let right = previousOrder[$1.id] ?? Int.max
             return left == right ? $0.id < $1.id : left < right
@@ -342,8 +398,17 @@ final class MenuBarItemStore: ObservableObject {
         let itemsWereReplaced = items.map(\.id) != merged.map(\.id)
         if itemsWereReplaced { items = merged }
         if displays != latestDisplays { displays = latestDisplays }
-        for item in items { item.updateVisibility(displayBounds: displays.map(\.frame)) }
+        for item in items {
+            if platformPolicy.movement == .maskOverlay,
+               maskedItemIDs.contains(item.id),
+               !temporarilyVisibleItemIDs.contains(item.id) {
+                item.markMaskedHidden()
+            } else {
+                item.updateVisibility(displayBounds: displays.map(\.frame))
+            }
+        }
         recomputeManagedSelection(publish: false)
+        reconcileAppliedMaskOverlayAfterRefresh()
         reconcileTemporarilyVisibleItems()
         preferences.saveKnownItems(knownBefore.union(currentIDs))
         preferences.saveKnownWindowIDs(knownWindowIDsBefore.union(currentWindowIDs))
@@ -365,7 +430,9 @@ final class MenuBarItemStore: ObservableObject {
         let captureCandidates = items.filter { $0.iconImage == nil }
         refreshImages(for: captureCandidates) { [weak self] in
             guard let self else { return }
-            if canApplyNewItems { self.scheduleAutomaticLayoutIfNeeded() }
+            if canApplyNewItems {
+                self.scheduleAutomaticLayoutIfNeeded()
+            }
             if self.refreshAgain {
                 self.refreshAgain = false
                 self.scheduleRefresh(after: 0.2, reason: "coalesced refresh", source: .observation)
@@ -392,6 +459,13 @@ final class MenuBarItemStore: ObservableObject {
         }
         refreshWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func visibleScannedItems(selectedIDs: Set<String>) -> [MenuBarItem] {
+        scanner.scan(selectedIDs: selectedIDs).filter { item in
+            guard let windowID = item.windowID else { return true }
+            return !ownedStatusWindowIDs.contains(windowID)
+        }
     }
 
     func rule(for item: MenuBarItem) -> MenuItemRule { item.rule }
@@ -436,15 +510,8 @@ final class MenuBarItemStore: ObservableObject {
         recomputeManagedSelection()
         if selected {
             applyLayout()
-        } else if let controlItemFrame {
-            layoutOperationMessage = language.text("store.restore.progress")
-            onLayoutOperationStateChanged?(false)
-            layoutManager.restore(previouslySelected, relativeTo: controlItemFrame) { [weak self] count in
-                guard let self else { return }
-                self.layoutOperationMessage = count > 0
-                    ? self.language.text("store.restore.count", count)
-                    : self.language.text("store.restore.all_visible")
-            }
+        } else {
+            restoreItems(previouslySelected)
         }
         onLayoutStateChanged?()
     }
@@ -560,18 +627,38 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     private func restoreItems(_ itemsToRestore: [MenuBarItem]) {
-        guard !itemsToRestore.isEmpty, let controlItemFrame else { return }
+        guard !itemsToRestore.isEmpty else { return }
+        if platformPolicy.movement == .maskOverlay {
+            restoreMaskedItems(itemsToRestore)
+            return
+        }
+        let wasHiddenSectionActive = isHiddenSectionActive
+        let actualItemsToRestore = itemsToRestore.filter { $0.visibility != .visible }
+        guard !actualItemsToRestore.isEmpty else {
+            let shouldRemainActive = wasHiddenSectionActive && !selectedItems.isEmpty
+            if isHiddenSectionActive != shouldRemainActive {
+                isHiddenSectionActive = shouldRemainActive
+                onLayoutStateChanged?()
+            }
+            DiagnosticLog.shared.record("layout.restore_skipped_visible", [
+                "requested": itemsToRestore.count
+            ])
+            return
+        }
+        guard let controlItemFrame else { return }
         cancelLayoutWork()
         isRestoringLayout = true
-        onLayoutOperationStateChanged?(false)
+        onLayoutOperationStateChanged?(true)
         layoutOperationMessage = language.text("store.restore.visible_items")
         let generation = layoutStartGeneration
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self, self.layoutStartGeneration == generation else { return }
-            self.layoutManager.restore(itemsToRestore, relativeTo: controlItemFrame) { [weak self] count in
+            self.layoutManager.restore(actualItemsToRestore, relativeTo: controlItemFrame) { [weak self] count in
                 guard let self, self.layoutStartGeneration == generation else { return }
                 self.isRestoringLayout = false
-                self.layoutOperationMessage = count == itemsToRestore.count
+                self.isHiddenSectionActive = wasHiddenSectionActive && !self.selectedItems.isEmpty
+                self.onLayoutOperationStateChanged?(false)
+                self.layoutOperationMessage = count == actualItemsToRestore.count
                     ? self.language.text("store.restore.count", count)
                     : self.language.text("store.restore.partial")
                 self.scheduleRefresh(after: 0.3, reason: "restore settled", source: .observation)
@@ -672,8 +759,8 @@ final class MenuBarItemStore: ObservableObject {
               layoutManagementEnabled,
               !isApplyingLayout,
               !selectedItems.isEmpty,
-              isReadyForManagedLayout,
-              selectedItems.contains(where: visibilityOverride ?? layoutManager.isVisible) else { return }
+              (platformPolicy.movement == .maskOverlay || isReadyForManagedLayout),
+              selectedItems.contains(where: needsLayoutMovement) else { return }
         automaticLayoutWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -687,6 +774,10 @@ final class MenuBarItemStore: ObservableObject {
     func applyLayout(automatic: Bool = false) {
         if isUIPreviewMode {
             layoutOperationMessage = language.text("store.preview.rules_applied")
+            return
+        }
+        if platformPolicy.movement == .maskOverlay {
+            applyMaskOverlayLayout(automatic: automatic)
             return
         }
         guard layoutManagementEnabled, !selectedItems.isEmpty else { return }
@@ -709,7 +800,7 @@ final class MenuBarItemStore: ObservableObject {
             return
         }
         let planned = selectedItems
-        let needed = planned.filter(visibilityOverride ?? layoutManager.isVisible).count
+        let needed = planned.filter(needsLayoutMovement).count
         if needed == 0 {
             failedLayoutIDs.subtract(planned.map(\.id))
             if !automatic { automaticLayoutSuspended = false }
@@ -788,6 +879,14 @@ final class MenuBarItemStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: start)
     }
 
+    private func needsLayoutMovement(_ item: MenuBarItem) -> Bool {
+        if platformPolicy.movement == .maskOverlay {
+            return !maskedItemIDs.contains(item.id)
+        }
+        let visibility = visibilityOverride?(item) ?? layoutManager.visibility(of: item)
+        return visibility != .hidden
+    }
+
     private func scheduleLayoutRetry(after delay: TimeInterval) {
         layoutWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in self?.applyLayout() }
@@ -800,6 +899,235 @@ final class MenuBarItemStore: ObservableObject {
         DiagnosticLog.shared.record("activation.retuck_requested", ["items": temporarilyVisibleItemIDs.count])
         layoutOperationMessage = language.text("store.activation.retuck_progress")
         applyLayout()
+    }
+
+    private func reconcileAppliedMaskOverlayAfterRefresh() {
+        guard platformPolicy.movement == .maskOverlay else { return }
+        let previouslyMasked = maskedItemIDs.union(maskingController.maskedItemIDs)
+        guard !previouslyMasked.isEmpty else { return }
+        let desired = items.filter {
+            previouslyMasked.contains($0.id) && $0.isSelected
+        }
+        let desiredIDs = Set(desired.map(\.id))
+        let result = maskingController.apply(items: desired)
+        commitMaskOverlayResult(
+            result,
+            desiredItemIDs: desiredIDs,
+            previouslyMaskedItemIDs: previouslyMasked
+        )
+        if result.changedWindowCount > 0 || !result.failedItemIDs.isEmpty {
+            DiagnosticLog.shared.record("mask.refresh", [
+                "windows": result.changedWindowCount,
+                "masked": result.maskedItemIDs.count,
+                "failed": result.failedItemIDs.count
+            ])
+        }
+    }
+
+    func reconcileLiveMaskGeometry() {
+        guard platformPolicy.movement == .maskOverlay,
+              layoutManagementEnabled,
+              !isTerminating,
+              !isApplyingLayout,
+              !isRestoringLayout,
+              activatingItemID == nil else { return }
+        let selectedIDs = Set(selectedItems.map(\.id))
+        failedLayoutIDs.formIntersection(selectedIDs)
+        let previouslyMasked = maskedItemIDs.union(maskingController.maskedItemIDs)
+        let trackedIDs = previouslyMasked.union(failedLayoutIDs)
+        guard !trackedIDs.isEmpty else { return }
+        let leftButtonPressed = CGEventSource.buttonState(.combinedSessionState, button: .left)
+        let rightButtonPressed = CGEventSource.buttonState(.combinedSessionState, button: .right)
+        guard !leftButtonPressed, !rightButtonPressed else { return }
+
+        let desired = items.filter { trackedIDs.contains($0.id) && $0.isSelected }
+        let desiredIDs = Set(desired.map(\.id))
+        let result = maskingController.apply(items: desired)
+        let previousFailedIDs = failedLayoutIDs.intersection(trackedIDs)
+        let nextFailedIDs = result.failedItemIDs.union(
+            desiredIDs.subtracting(result.maskedItemIDs)
+        )
+        let stateChanged = result.maskedItemIDs != maskedItemIDs ||
+            previousFailedIDs != nextFailedIDs
+        if stateChanged {
+            commitMaskOverlayResult(
+                result,
+                desiredItemIDs: desiredIDs,
+                previouslyMaskedItemIDs: previouslyMasked
+            )
+            objectWillChange.send()
+            onLayoutStateChanged?()
+        }
+        if result.changedWindowCount > 0 || !result.failedItemIDs.isEmpty {
+            DiagnosticLog.shared.record("mask.geometry", [
+                "windows": result.changedWindowCount,
+                "masked": result.maskedItemIDs.count,
+                "failed": result.failedItemIDs.count
+            ])
+        }
+    }
+
+    private func restoreMaskedItems(_ itemsToRestore: [MenuBarItem]) {
+        let requestedIDs = Set(itemsToRestore.map(\.id))
+        let previouslyMasked = maskedItemIDs.union(maskingController.maskedItemIDs)
+        guard !previouslyMasked.intersection(requestedIDs).isEmpty else { return }
+
+        let desiredIDs = previouslyMasked.subtracting(requestedIDs)
+        let desired = items.filter { desiredIDs.contains($0.id) && $0.isSelected }
+        let result = maskingController.apply(items: desired)
+        commitMaskOverlayResult(
+            result,
+            desiredItemIDs: Set(desired.map(\.id)),
+            previouslyMaskedItemIDs: previouslyMasked
+        )
+        let restoredCount = requestedIDs.subtracting(maskedItemIDs).count
+        layoutOperationMessage = result.failedItemIDs.isEmpty
+            ? language.text("store.restore.count", restoredCount)
+            : language.text("store.restore.partial")
+        DiagnosticLog.shared.record("mask.restore_items", [
+            "requested": requestedIDs.count,
+            "restored": restoredCount,
+            "failed": result.failedItemIDs.count
+        ])
+        objectWillChange.send()
+        onLayoutStateChanged?()
+    }
+
+    private func applyMaskOverlayLayout(
+        automatic: Bool,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        guard platformPolicy.movement == .maskOverlay else {
+            completion?(false)
+            return
+        }
+        guard !isTerminating, !isRestoringLayout, activatingItemID == nil else {
+            completion?(false)
+            return
+        }
+        if automatic && automaticLayoutSuspended {
+            completion?(false)
+            return
+        }
+        if automatic && !MenuBarInteractionPolicy.allowsAutomaticLayout(
+            hasTemporarilyVisibleItems: false
+        ) {
+            completion?(false)
+            return
+        }
+
+        let desired = layoutManagementEnabled ? selectedItems : []
+        let desiredIDs = Set(desired.map(\.id))
+        if !desired.isEmpty {
+            permissions.refresh(updateTimestamp: false)
+            guard permissions.isReady else {
+                layoutOperationMessage = language.text("store.permission.not_ready")
+                completion?(false)
+                return
+            }
+        }
+        if isApplyingLayout {
+            if !automatic { shouldApplyLayoutAgain = true }
+            completion?(false)
+            return
+        }
+
+        let leftButtonPressed = CGEventSource.buttonState(.combinedSessionState, button: .left)
+        let rightButtonPressed = CGEventSource.buttonState(.combinedSessionState, button: .right)
+        if MenuBarInteractionPolicy.shouldDeferLayout(
+            isAutomatic: automatic,
+            leftButtonPressed: leftButtonPressed,
+            rightButtonPressed: rightButtonPressed
+        ) {
+            DiagnosticLog.shared.record("mask.deferred_input", [
+                "left": leftButtonPressed ? 1 : 0,
+                "right": rightButtonPressed ? 1 : 0
+            ])
+            completion?(false)
+            return
+        }
+
+        automaticLayoutWorkItem?.cancel()
+        automaticLayoutWorkItem = nil
+        if !automatic { automaticLayoutSuspended = false }
+        isApplyingLayout = true
+        temporarilyVisibleItemIDs.removeAll()
+        layoutOperationMessage = desired.isEmpty
+            ? language.text("store.restore.progress")
+            : language.text("store.layout.applying")
+        onLayoutOperationStateChanged?(true)
+        let previouslyMasked = maskedItemIDs.union(maskingController.maskedItemIDs)
+        DiagnosticLog.shared.record("mask.layout_begin", [
+            "automatic": automatic ? 1 : 0,
+            "desired": desiredIDs.count,
+            "previous": previouslyMasked.count
+        ])
+
+        let result = maskingController.apply(items: desired)
+        commitMaskOverlayResult(
+            result,
+            desiredItemIDs: desiredIDs,
+            previouslyMaskedItemIDs: previouslyMasked
+        )
+        let failures = result.failedItemIDs.union(desiredIDs.subtracting(result.maskedItemIDs))
+        automaticLayoutSuspended = !failures.isEmpty
+        isApplyingLayout = false
+        onLayoutOperationStateChanged?(false)
+
+        if !failures.isEmpty {
+            layoutOperationMessage = language.text("store.layout.partial")
+        } else if desiredIDs.isEmpty {
+            layoutOperationMessage = language.text("store.restore.original")
+        } else if result.changedWindowCount > 0 || previouslyMasked != result.maskedItemIDs {
+            layoutOperationMessage = language.text("store.layout.updated", result.maskedItemIDs.count)
+        } else {
+            layoutOperationMessage = language.text("store.layout.correct")
+        }
+        DiagnosticLog.shared.record("mask.layout_end", [
+            "windows": result.changedWindowCount,
+            "masked": result.maskedItemIDs.count,
+            "failed": failures.count
+        ])
+        objectWillChange.send()
+        onLayoutStateChanged?()
+        completion?(failures.isEmpty)
+
+        if shouldApplyLayoutAgain {
+            shouldApplyLayoutAgain = false
+            if !automaticLayoutSuspended {
+                DispatchQueue.main.async { [weak self] in self?.applyLayout() }
+            }
+        }
+        if refreshAgain {
+            refreshAgain = false
+            scheduleRefresh(after: 0.1, reason: "mask operation completed", source: .observation)
+        }
+    }
+
+    private func commitMaskOverlayResult(
+        _ result: MenuBarMaskApplicationResult,
+        desiredItemIDs: Set<String>,
+        previouslyMaskedItemIDs: Set<String>
+    ) {
+        let scopedIDs = desiredItemIDs.union(previouslyMaskedItemIDs)
+        maskedItemIDs = result.maskedItemIDs
+        failedLayoutIDs.subtract(scopedIDs)
+        failedLayoutIDs.formUnion(result.failedItemIDs)
+        failedLayoutIDs.formUnion(desiredItemIDs.subtracting(result.maskedItemIDs))
+        isHiddenSectionActive = false
+
+        for item in items {
+            if maskedItemIDs.contains(item.id) {
+                item.markMaskedHidden()
+            } else if let visibilityOverride {
+                item.visibility = visibilityOverride(item)
+            } else {
+                item.updateVisibility(
+                    displayBounds: displays.map(\.frame),
+                    frameProvider: layoutManager.currentFrame(for:)
+                )
+            }
+        }
     }
 
     private func cancelLayoutWork() {
@@ -828,14 +1156,45 @@ final class MenuBarItemStore: ObservableObject {
             completion()
             return
         }
+        if platformPolicy.movement == .maskOverlay {
+            cancelLayoutWork()
+            temporarilyVisibleItemIDs.removeAll()
+            isRestoringLayout = true
+            onLayoutOperationStateChanged?(true)
+            layoutOperationMessage = language.text("store.restore.progress")
+            let previouslyMasked = maskedItemIDs.union(maskingController.maskedItemIDs)
+            let removedWindows = maskingController.removeAll()
+            failedLayoutIDs.removeAll()
+            commitMaskOverlayResult(
+                .init(maskedItemIDs: [], failedItemIDs: [], changedWindowCount: removedWindows),
+                desiredItemIDs: [],
+                previouslyMaskedItemIDs: previouslyMasked
+            )
+            isRestoringLayout = false
+            onLayoutOperationStateChanged?(false)
+            layoutOperationMessage = language.text("store.restore.original")
+            DiagnosticLog.shared.record("mask.restore", [
+                "items": previouslyMasked.count,
+                "windows": removedWindows
+            ])
+            objectWillChange.send()
+            onLayoutStateChanged?()
+            completion()
+            return
+        }
         cancelLayoutWork()
         temporarilyVisibleItemIDs.removeAll()
-        isHiddenSectionActive = false
         isRestoringLayout = true
         onLayoutStateChanged?()
-        guard let controlItemFrame else { isRestoringLayout = false; completion(); return }
+        onLayoutOperationStateChanged?(true)
+        guard let controlItemFrame else {
+            isRestoringLayout = false
+            isHiddenSectionActive = false
+            onLayoutOperationStateChanged?(false)
+            completion()
+            return
+        }
         layoutOperationMessage = language.text("store.restore.progress")
-        onLayoutOperationStateChanged?(false)
         let generation = layoutStartGeneration
         let planned = selectedItems
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
@@ -843,6 +1202,8 @@ final class MenuBarItemStore: ObservableObject {
             self.layoutManager.restore(planned, relativeTo: controlItemFrame) { [weak self] count in
                 guard let self, self.layoutStartGeneration == generation else { completion(); return }
                 self.isRestoringLayout = false
+                self.isHiddenSectionActive = false
+                self.onLayoutOperationStateChanged?(false)
                 DiagnosticLog.shared.record("layout.restore", ["moved": count, "requested": planned.count])
                 self.layoutOperationMessage = count == planned.count
                     ? self.language.text("store.restore.original")
@@ -882,6 +1243,7 @@ final class MenuBarItemStore: ObservableObject {
     func prepareForTermination(completion: @escaping () -> Void) {
         isTerminating = true
         monitorTimer?.invalidate()
+        maskGeometryTimer?.invalidate()
         refreshWorkItem?.cancel()
         captureGeneration += 1
         captureTask?.cancel()
@@ -891,6 +1253,10 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     func restoreProtectedSystemItems(completion: @escaping () -> Void = {}) {
+        if platformPolicy.movement == .maskOverlay {
+            completion()
+            return
+        }
         layoutManager.restoreProtectedSystemItems { _ in completion() }
     }
 
@@ -979,6 +1345,16 @@ final class MenuBarItemStore: ObservableObject {
         guard activatingItemID == nil else { return }
         activatingItemID = item.id
         lastActivationError = nil
+        if platformPolicy.movement == .maskOverlay,
+           maskedItemIDs.contains(item.id) {
+            activateMaskedItem(
+                item,
+                mouseButton: mouseButton,
+                restoreCursorLocation: layoutManager.currentPointerLocation(),
+                retryCount: retryCount
+            )
+            return
+        }
         if mouseButton == .left, activator.activateDirectly(item) {
             DiagnosticLog.shared.record("activation.direct", ["route": 1])
             finishActivation()
@@ -1046,40 +1422,184 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     private func activateByTemporarilyRevealing(_ item: MenuBarItem, mouseButton: CGMouseButton, restoreCursorLocation: CGPoint?, retryCount: Int) {
-        layoutManager.reveal(item, restoreCursorLocation: restoreCursorLocation) { [weak self] moved in
-            guard let self else { return }
-            guard moved else {
-                self.retryActivation(item, mouseButton: mouseButton, retryCount: retryCount,
-                                     message: self.language.text("store.activation.reveal_failed", item.tooltip(for: self.language.selectedLanguage)))
+        revealTemporarily(
+            item,
+            mouseButton: mouseButton,
+            restoreCursorLocation: restoreCursorLocation,
+            retryCount: retryCount
+        )
+    }
+
+    private func activateMaskedItem(
+        _ item: MenuBarItem,
+        mouseButton: CGMouseButton,
+        restoreCursorLocation: CGPoint?,
+        retryCount: Int
+    ) {
+        if mouseButton == .left {
+            if activator.activateDirectly(item) {
+                DiagnosticLog.shared.record("mask.activation_direct", ["route": 1])
+                finishActivation()
                 return
             }
-            self.preserveRevealedItem(item)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
-                guard let self else { return }
-                // Once the item is visible again, resolve the current
-                // WindowServer element instead of relying on the stale AX
-                // reference captured during scanning. This is both faster
-                // and safer than injecting a mouse event into Control Center.
-                if mouseButton == .left,
-                   self.itemUsesAccessibility(item),
-                   self.activator.activateDirectly(item)
-                    || self.activator.activateViaAccessibilityHitTest(item) {
-                    DiagnosticLog.shared.record("activation.temporary_activated", ["route": 1])
-                    self.finishActivation()
+            if activateUsingFreshAccessibility(item) {
+                DiagnosticLog.shared.record("mask.activation_direct", ["route": 2])
+                finishActivation()
+                return
+            }
+        }
+
+        layoutOperationMessage = language.text("store.activation.reveal_once")
+        let requestedID = item.id
+        maskingController.setRevealed(true, itemID: requestedID)
+        DiagnosticLog.shared.record("mask.activation_reveal", [
+            "button": mouseButton == .right ? 2 : 1
+        ])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { [weak self] in
+            guard let self, self.activatingItemID == requestedID, !self.isTerminating else {
+                self?.maskingController.setRevealed(false, itemID: requestedID)
+                return
+            }
+
+            if mouseButton == .left {
+                if self.activator.activateDirectly(item)
+                    || self.activateUsingFreshAccessibility(item)
+                    || (item.windowID == nil && self.activator.activateViaAccessibilityHitTest(item)) {
+                    self.finishMaskedActivation(
+                        item,
+                        mouseButton: mouseButton,
+                        restoreCursorLocation: restoreCursorLocation,
+                        retryCount: retryCount,
+                        success: true
+                    )
                     return
                 }
-                self.activator.activateMovedItem(item, mouseButton: mouseButton) { [weak self] success in
-                    guard let self else { return }
-                    self.layoutManager.restorePointerLocation(restoreCursorLocation)
-                    guard success else {
-                        DiagnosticLog.shared.record("activation.click_failed_visible", ["route": mouseButton == .right ? 2 : 1])
-                        self.retryActivation(item, mouseButton: mouseButton, retryCount: retryCount,
-                                             message: self.language.text("store.activation.failed", item.tooltip(for: self.language.selectedLanguage)))
-                        return
-                    }
-                    DiagnosticLog.shared.record("activation.temporary_activated", ["route": mouseButton == .right ? 2 : 1])
-                    self.finishActivation()
+                guard item.windowID != nil else {
+                    self.finishMaskedActivation(
+                        item,
+                        mouseButton: mouseButton,
+                        restoreCursorLocation: restoreCursorLocation,
+                        retryCount: retryCount,
+                        success: false
+                    )
+                    return
                 }
+                self.activator.activateMovedItem(item, mouseButton: .left) { [weak self] success in
+                    self?.finishMaskedActivation(
+                        item,
+                        mouseButton: mouseButton,
+                        restoreCursorLocation: restoreCursorLocation,
+                        retryCount: retryCount,
+                        success: success
+                    )
+                }
+                return
+            }
+
+            self.activator.activateRightClick(item) { [weak self] success in
+                self?.finishMaskedActivation(
+                    item,
+                    mouseButton: mouseButton,
+                    restoreCursorLocation: restoreCursorLocation,
+                    retryCount: retryCount,
+                    success: success
+                )
+            }
+        }
+    }
+
+    private func finishMaskedActivation(
+        _ item: MenuBarItem,
+        mouseButton: CGMouseButton,
+        restoreCursorLocation: CGPoint?,
+        retryCount: Int,
+        success: Bool
+    ) {
+        let requestedID = item.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+            guard let self else { return }
+            self.maskingController.setRevealed(false, itemID: requestedID)
+            self.layoutManager.restorePointerLocation(restoreCursorLocation)
+            guard self.activatingItemID == requestedID else { return }
+            guard success else {
+                let key = mouseButton == .right
+                    ? "store.activation.context_failed"
+                    : "store.activation.failed"
+                self.retryActivation(
+                    item,
+                    mouseButton: mouseButton,
+                    retryCount: retryCount,
+                    message: self.language.text(
+                        key,
+                        item.tooltip(for: self.language.selectedLanguage)
+                    )
+                )
+                return
+            }
+            DiagnosticLog.shared.record("mask.activation_complete", [
+                "button": mouseButton == .right ? 2 : 1
+            ])
+            self.finishActivation()
+        }
+    }
+
+    private func revealTemporarily(
+        _ item: MenuBarItem,
+        mouseButton: CGMouseButton,
+        restoreCursorLocation: CGPoint?,
+        retryCount: Int
+    ) {
+        layoutManager.reveal(item, restoreCursorLocation: restoreCursorLocation) { [weak self] moved in
+            guard let self else { return }
+            self.onLayoutOperationStateChanged?(false)
+            self.finishTemporaryReveal(
+                item,
+                mouseButton: mouseButton,
+                restoreCursorLocation: restoreCursorLocation,
+                retryCount: retryCount,
+                moved: moved
+            )
+        }
+    }
+
+    private func finishTemporaryReveal(
+        _ item: MenuBarItem,
+        mouseButton: CGMouseButton,
+        restoreCursorLocation: CGPoint?,
+        retryCount: Int,
+        moved: Bool
+    ) {
+        guard moved else {
+            retryActivation(item, mouseButton: mouseButton, retryCount: retryCount,
+                            message: language.text("store.activation.reveal_failed", item.tooltip(for: language.selectedLanguage)))
+            return
+        }
+        preserveRevealedItem(item)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+            guard let self else { return }
+            // Once the item is visible again, resolve the current
+            // WindowServer element instead of relying on the stale AX
+            // reference captured during scanning. This is both faster
+            // and safer than injecting a mouse event into Control Center.
+            if mouseButton == .left,
+               self.itemUsesAccessibility(item),
+               self.activator.activateDirectly(item)
+                || self.activator.activateViaAccessibilityHitTest(item) {
+                DiagnosticLog.shared.record("activation.temporary_activated", ["route": 1])
+                self.finishActivation()
+                return
+            }
+            self.activator.activateMovedItem(item, mouseButton: mouseButton) { [weak self] success in
+                guard let self else { return }
+                self.layoutManager.restorePointerLocation(restoreCursorLocation)
+                guard success else {
+                    DiagnosticLog.shared.record("activation.click_failed_visible", ["route": mouseButton == .right ? 2 : 1])
+                    self.retryActivation(item, mouseButton: mouseButton, retryCount: retryCount,
+                                         message: self.language.text("store.activation.failed", item.tooltip(for: self.language.selectedLanguage)))
+                    return
+                }
+                DiagnosticLog.shared.record("activation.temporary_activated", ["route": mouseButton == .right ? 2 : 1])
+                self.finishActivation()
             }
         }
     }

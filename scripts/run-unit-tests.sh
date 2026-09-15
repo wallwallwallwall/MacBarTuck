@@ -12,6 +12,8 @@ for source in \
     "$ROOT/MacBarTuck/Core/MenuItemRuleCodec.swift" \
     "$ROOT/MacBarTuck/Core/DisplayConstraint.swift" \
     "$ROOT/MacBarTuck/Core/MenuBarGeometry.swift" \
+    "$ROOT/MacBarTuck/Core/MenuBarDisplayBounds.swift" \
+    "$ROOT/MacBarTuck/Core/MenuBarMaskLayoutPolicy.swift" \
     "$ROOT/MacBarTuck/Core/MenuItemSafetyPolicy.swift" \
     "$ROOT/MacBarTuck/Core/MenuItemVisibility.swift" \
     "$ROOT/MacBarTuck/Core/MenuBarInteractionPolicy.swift" \
@@ -50,6 +52,16 @@ swiftc \
     -o "$BUILD_DIR/MenuBarRuntimeTests"
 
 "$BUILD_DIR/MenuBarRuntimeTests"
+
+swiftc \
+    -parse-as-library \
+    "${SOURCES[@]}" \
+    "$ROOT/MacBarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarMaskingController.swift" \
+    "$ROOT/Tests/MenuBarMaskingControllerTests.swift" \
+    -o "$BUILD_DIR/MenuBarMaskingControllerTests"
+
+"$BUILD_DIR/MenuBarMaskingControllerTests"
 
 swiftc -parse-as-library "${SOURCES[@]}" \
     "$ROOT/MacBarTuck/Models/MenuBarItem.swift" \

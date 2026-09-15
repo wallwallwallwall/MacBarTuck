@@ -40,6 +40,9 @@ final class MenuBarLayoutManager {
     func hide(_ items: [MenuBarItem], relativeTo controlFrame: CGRect, targetAttempt: Int = 0, completion: @escaping (Int) -> Void = { _ in }) {
         guard isEnabled else { completion(0); return }
         switch MenuBarPlatformPolicy.current.movement {
+        case .maskOverlay:
+            completion(0)
+            return
         case .accessibility:
             // The macOS 27 menu bar is a composite host. Never send the old
             // per-window Command-drag event to that host: it cannot hide a
@@ -95,6 +98,9 @@ final class MenuBarLayoutManager {
 
     func reveal(_ item: MenuBarItem, restoreCursorLocation: CGPoint? = nil, completion: @escaping (Bool) -> Void) {
         switch MenuBarPlatformPolicy.current.movement {
+        case .maskOverlay:
+            completion(false)
+            return
         case .accessibility:
             guard let element = item.axElement else { completion(false); return }
             completion(setAXPosition(item.restorationFrame.origin, for: element))
@@ -117,6 +123,9 @@ final class MenuBarLayoutManager {
         let token = generation ?? operationGeneration
         guard token == operationGeneration else { completion(false); return }
         switch MenuBarPlatformPolicy.current.movement {
+        case .maskOverlay:
+            completion(false)
+            return
         case .accessibility:
             guard isEnabled, let element = item.axElement else { completion(false); return }
             completion(setAXPosition(hiddenAXPosition(for: item), for: element))
@@ -151,7 +160,7 @@ final class MenuBarLayoutManager {
         // report a failed layout repair when the system leaves them in place.
         if item.isAlwaysVisibleSystemItem { return false }
         guard item.windowID != nil || item.axElement != nil else { return false }
-        return isVisible(item)
+        return visibility(of: item) != .hidden
     }
 
     /// Returns whether WindowServer currently places the item in a real menu
@@ -161,15 +170,28 @@ final class MenuBarLayoutManager {
     /// `needsHiding` for both meanings caused hidden right-clicks to be sent
     /// directly to invalid (negative) coordinates.
     func isVisible(_ item: MenuBarItem) -> Bool {
-        guard let windowID = item.windowID else {
-            guard let element = item.axElement, let frame = currentAXFrame(for: element) else {
-                return Self.isVisibleMenuBarFrame(item.frame)
-            }
-            return Self.isVisibleMenuBarFrame(frame)
+        let state = visibility(of: item)
+        return state == .visible || state == .partial
+    }
+
+    func visibility(of item: MenuBarItem) -> MenuItemVisibility {
+        MenuItemVisibility.evaluate(item.windowRepresentations.map { representation -> Bool? in
+            guard let frame = currentFrame(for: representation) else { return nil }
+            return MenuBarGeometry.isVisibleMenuBarItem(
+                frame,
+                displayBounds: representation.sourceDisplayBounds.map { [$0] }
+                    ?? Self.activeDisplayBounds()
+            )
+        })
+    }
+
+    func currentFrame(for item: MenuBarItem) -> CGRect? {
+        if let windowID = item.windowID,
+           let frame = currentFrame(windowID: windowID) {
+            return frame
         }
-        guard let frame = currentFrame(windowID: windowID) else { return false }
-        return MenuBarGeometry.isVisibleMenuBarItem(frame,
-            displayBounds: item.sourceDisplayBounds.map { [$0] } ?? Self.activeDisplayBounds())
+        guard let element = item.axElement else { return nil }
+        return currentAXFrame(for: element)
     }
 
     /// Quartz screen coordinates captured before any synthetic menu-bar event.
@@ -184,6 +206,9 @@ final class MenuBarLayoutManager {
 
     func restore(_ items: [MenuBarItem], relativeTo controlFrame: CGRect, completion: @escaping (Int) -> Void = { _ in }) {
         switch MenuBarPlatformPolicy.current.movement {
+        case .maskOverlay:
+            completion(0)
+            return
         case .accessibility:
             completion(restoreAccessibilityItems(items.filter { $0.axElement != nil }))
             return
@@ -204,6 +229,8 @@ final class MenuBarLayoutManager {
 
     func show(_ item: MenuBarItem) {
         switch MenuBarPlatformPolicy.current.movement {
+        case .maskOverlay:
+            return
         case .accessibility:
             guard let element = item.axElement else { return }
             _ = setAXPosition(item.restorationFrame.origin, for: element)
@@ -221,6 +248,10 @@ final class MenuBarLayoutManager {
     }
 
     func restoreProtectedSystemItems(attempt: Int = 0, excluding excludedWindowIDs: Set<CGWindowID> = [], excludingSystemNames: Set<String> = [], completion: @escaping (Int) -> Void = { _ in }) {
+        guard MenuBarPlatformPolicy.current.movement != .maskOverlay else {
+            completion(0)
+            return
+        }
         guard let target = controlTargetWindow() else {
             guard attempt < 3 else {
                 logger.error("Control target unavailable while restoring protected items")
@@ -380,8 +411,9 @@ final class MenuBarLayoutManager {
 
     private func move(_ requestedItem: MenuBarItem, relativeTo targetWindowID: CGWindowID, placement: Placement, attempt: Int = 1, restoreCursorLocation: CGPoint? = nil, completion: @escaping (Bool) -> Void) {
         let generation = operationGeneration
+        let displayBounds = Self.activeDisplayBounds()
         guard let targetFrame = currentFrame(windowID: targetWindowID),
-              let targetDisplay = Self.activeDisplayBounds().first(where: { $0.contains(CGPoint(x: targetFrame.midX, y: targetFrame.midY)) }) else {
+              let targetDisplay = displayBounds.first(where: { $0.contains(CGPoint(x: targetFrame.midX, y: targetFrame.midY)) }) else {
             DiagnosticLog.shared.record("move.rejected.target", ["target": Int(targetWindowID)])
             completion(false); return
         }
@@ -428,7 +460,8 @@ final class MenuBarLayoutManager {
             dragged: dragged,
             up: up,
             ownerPID: ownerPID,
-            restoreCursorLocation: physicalPointerLocation
+            restoreCursorLocation: physicalPointerLocation,
+            displayBounds: displayBounds
         ) { [weak self] success in
             guard let self, success, self.operationGeneration == generation else { completion(false); return }
             self.verifyMove(item, relativeTo: targetWindowID, placement: placement, attempt: attempt, check: 0, generation: generation, restoreCursorLocation: physicalPointerLocation, completion: completion)
@@ -471,6 +504,7 @@ final class MenuBarLayoutManager {
         up: CGEvent,
         ownerPID: pid_t,
         restoreCursorLocation: CGPoint?,
+        displayBounds: [CGRect],
         completion: @escaping (Bool) -> Void
     ) {
         let tap: CGEventTapLocation = isControlCenter(ownerPID) ? .cghidEventTap : .cgSessionEventTap
@@ -482,7 +516,7 @@ final class MenuBarLayoutManager {
             up.post(tap: tap)
             usleep(140_000)
             if let restoreCursorLocation,
-               Self.activeDisplayBounds().contains(where: { $0.contains(restoreCursorLocation) }),
+               displayBounds.contains(where: { $0.contains(restoreCursorLocation) }),
                let restore = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: restoreCursorLocation, mouseButton: .left) {
                 // This is the real pointer location captured before the
                 // operation, never a synthetic off-screen or test coordinate.
@@ -606,11 +640,7 @@ final class MenuBarLayoutManager {
     }
 
     private static func activeDisplayBounds() -> [CGRect] {
-        var count: UInt32 = 0
-        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
-        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        guard CGGetActiveDisplayList(count, &displays, &count) == .success else { return [] }
-        return displays.prefix(Int(count)).map(CGDisplayBounds)
+        MenuBarDisplayBounds.current()
     }
 
     private func windowRecords() -> [(id: CGWindowID, pid: pid_t, title: String, owner: String, frame: CGRect)] { Self.fetchWindowRecords() }

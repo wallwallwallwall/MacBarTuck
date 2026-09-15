@@ -66,8 +66,12 @@ enum MenuBarGeometry {
     }
 
     private static func isNearMenuBar(_ frame: CGRect, on display: CGRect) -> Bool {
-        let nearQuartzMenuBar = abs(frame.minY - display.minY) <= 4
-        let nearAppKitMenuBar = abs(frame.maxY - display.maxY) <= 50
+        // Retina AX frames commonly land at 4.5 or 5 points from the screen
+        // edge. Keep a small tolerance without admitting ordinary top-level
+        // windows into the status-item classifier.
+        let edgeTolerance: CGFloat = 6
+        let nearQuartzMenuBar = abs(frame.minY - display.minY) <= edgeTolerance
+        let nearAppKitMenuBar = abs(frame.maxY - display.maxY) <= edgeTolerance
         return nearQuartzMenuBar || nearAppKitMenuBar
     }
 }
