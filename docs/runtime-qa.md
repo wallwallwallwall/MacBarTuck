@@ -126,3 +126,17 @@
 - helper 身份解析到最外层 `.app`，补齐 `CFBundleIconFile`、`CFBundleIconName`、`CFBundleIconFiles` 与 `CFBundleIcons`；输入法使用真实菜单栏图像或键盘符号。基础测试 421 项通过，其中菜单身份与图标检查 83 项。
 - macOS 27 及后续选择逐项 Accessibility 扫描与移动，禁用旧隐藏分隔宿主；宽幅复合菜单栏窗口不参与 AX 种子合并，帧宽差异过大的窗口不能匹配同一 AX 子项。隐藏后的刷新保留最后可见恢复帧，避免“全部显示”仍停留在屏外。
 - 当前验证机为 Apple Silicon、macOS 26.6.2、Xcode 26.6、macOS SDK 26.5。项目部署目标保持 macOS 15.0，Debug/Release 均固定 `arm64`。Apple 已发布 macOS 27.0 RC 与 Xcode 27 RC，但本机未安装对应系统和 SDK，因此 27 的策略回归与向前兼容编译可验证，27 RC 真机行为和 SDK 27 构建仍为 `UNVERIFIED`。
+
+## 0.1.16 macOS 27 菜单项发现修复
+
+日期：2026-09-15。
+
+- 验证机已升级为 Apple Silicon、macOS 27.0（26A428），连接内置 `1512 × 982` 主屏和左侧 DELL P2419H `1920 × 1080` 扩展屏。已安装的 `0.1.15 (17)` 进程确认辅助功能与屏幕录制均有效，但生产扫描连续返回 `items=0`，因此故障与权限无关。
+- 只读系统采样确认：macOS 27 的 layer-25 WindowServer 列表不再提供完整的独立状态项；ChatGPT、Clash Verge、Tencent Lemon、MonoProxyMac、Snipaste、Tailscale、输入法、iStat Menus、微信和钉钉位于各应用的 `AXExtrasMenuBar`。多数元素的 `AXTitle` 属性存在但内容为空，旧的 `nil` 回退不会读取描述或应用名，随后被空标题过滤。
+- 修复按 `AXExtrasMenuBar -> AXMenuBar` 顺序读取；空白标题回退到描述或应用身份，垂直内缩 5 pt 的图标仍属于菜单栏范围。长动态状态标题仅在普通 `AXMenuBar` 回退中按应用菜单过滤，iStat 的传感器、网速、CPU、内存和磁盘 5 个项目全部保留。
+- macOS 27 使用 `ax|bundle|应用内顺序` 作为稳定 ID，不再继承动态 WindowServer 标题。无标题且不可操作的 `MenuBarAgent` 托管组被排除；旧 `window|Control Center|bundle|0` 与中文控制中心 ID 保留为规则迁移别名。
+- 生产扫描模块真机探针连续运行 3 次，每次均发现 15 个唯一且相同的 ID；该命令行探针包含当前 `0.1.15` MacBarTuck 自身，真实应用会按 bundle 排除自己，因此当前环境预期为 14 个外部逻辑项目。三次间 CPU、网速文字发生变化，ID 集合仍完全一致。
+- 自动化回归为 436 项基础测试、18 项刷新隔离测试及诊断日志轮换/JSON/大小边界检查。Debug `arm64` 构建、Xcode Analyze、Debug 与最终 Release 各 16 个中英文安全界面场景均通过。
+- 同一组 436 项基础测试、18 项刷新隔离和诊断日志检查也通过 macOS 27.0 Command Line Tools、Swift 6.4 的编译与运行。Command Line Tools 不包含完整 SwiftUI 宏插件，因此这不替代尚未执行的 Xcode 27 完整应用构建。
+- 最终 `MacBarTuck-0.1.16.dmg` 内为 `0.1.16 (18)`、最低系统 `15.0`、仅 `arm64`，临时签名校验通过，并生成配套 SHA-256 文件。安装版成功识别内置主屏与 DELL 扩展屏；临时签名更新后当前进程权限为 `0/2`，点击刷新只记录 `refresh.request`，没有 `layout.begin`、`move.*` 或非零 `separator.resize`。
+- 发现、名称回退、唯一 ID、旧规则迁移、构建与界面结果为 `VERIFIED`。当前用户偏好中的 `layoutManagementEnabled=0`，本轮不自动打开收纳或执行真实 AX 位置移动；真实收纳、恢复和双屏逐项点击为 `UNVERIFIED`，不影响本次“升级后列表为空”的修复结论。

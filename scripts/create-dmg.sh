@@ -3,6 +3,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
+XCODEBUILD="$DEVELOPER_DIR/usr/bin/xcodebuild"
+SWIFT="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
+SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/MacBarTuck/Resources/Info.plist")"
 DERIVED_DATA="$ROOT/work/DerivedData-Release"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/MacBarTuck-dmg.XXXXXX")"
@@ -16,11 +20,15 @@ SIGNING_IDENTITY="${MACBARTUCK_SIGNING_IDENTITY:-${BARTUCK_SIGNING_IDENTITY:--}}
 
 trap 'rm -rf "$TEMP_ROOT"' EXIT INT TERM
 
+test -x "$XCODEBUILD"
+test -x "$SWIFT"
+test -d "$SDKROOT"
+
 rm -rf "$DERIVED_DATA"
 mkdir -p "$STAGING/.background" "$STAGING/docs" "$DIST"
 rm -f "$DMG_PATH" "$DMG_PATH.sha256"
 
-xcodebuild \
+DEVELOPER_DIR="$DEVELOPER_DIR" "$XCODEBUILD" \
   -project "$ROOT/MacBarTuck.xcodeproj" \
   -scheme MacBarTuck \
   -configuration Release \
@@ -70,7 +78,8 @@ for screenshot in "$ROOT"/docs/screenshots/*.png; do
   ditto --norsrc "$screenshot" "$STAGING/docs/screenshots/$(basename "$screenshot")"
 done
 
-swift "$ROOT/scripts/make-dmg-background.swift" "$STAGING/.background/background.png"
+DEVELOPER_DIR="$DEVELOPER_DIR" SDKROOT="$SDKROOT" \
+  "$SWIFT" "$ROOT/scripts/make-dmg-background.swift" "$STAGING/.background/background.png"
 xattr -cr "$STAGING"
 codesign --verify --deep --strict --verbose=2 "$APP_STAGED"
 

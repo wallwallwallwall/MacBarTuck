@@ -12,7 +12,8 @@ private enum MenuBarIdentityTests {
     static func main() throws {
         let scanner = MenuBarScanner(readWindows: { mirroredWindows() },
                                      readDisplayBounds: { displays },
-                                     ownBundleIdentifier: "com.bartuck.app")
+                                     ownBundleIdentifier: "com.bartuck.app",
+                                     platformPolicy: MenuBarPlatformPolicy(majorVersion: 26))
         let items = scanner.scan(selectedIDs: [])
         try expect(items.count == 2, "Two mirrored menu items must produce two rows, not four.")
         try expect(Set(items.map(\.id)).count == 2, "Logical menu item IDs must be unique.")
@@ -55,7 +56,9 @@ private enum MenuBarIdentityTests {
 
     private static func stableMirrorIdentity() throws {
         var windows = mirroredWindows()
-        let scanner = MenuBarScanner(readWindows: { windows }, readDisplayBounds: { displays }, ownBundleIdentifier: "com.bartuck.app")
+        let scanner = MenuBarScanner(readWindows: { windows }, readDisplayBounds: { displays },
+                                     ownBundleIdentifier: "com.bartuck.app",
+                                     platformPolicy: MenuBarPlatformPolicy(majorVersion: 26))
         let original = scanner.scan(selectedIDs: [])
         windows[4] = window(5, "Item-0", x: 900, width: 34, height: 33)
         let moving = scanner.scan(selectedIDs: [])
@@ -67,7 +70,8 @@ private enum MenuBarIdentityTests {
 
     private static func scan(_ windows: [[String: Any]]) -> [MenuBarItem] {
         MenuBarScanner(readWindows: { windows }, readDisplayBounds: { displays },
-                       ownBundleIdentifier: "com.bartuck.app").scan(selectedIDs: [])
+                       ownBundleIdentifier: "com.bartuck.app",
+                       platformPolicy: MenuBarPlatformPolicy(majorVersion: 26)).scan(selectedIDs: [])
     }
 
     private static func mirrorBoundaries() throws {
@@ -311,7 +315,8 @@ private enum MenuBarIdentityTests {
             readWindows: { [window(120, "com.tencent.LemonMonitor", x: 1000, width: 30, height: 30)] },
             readDisplayBounds: { [CGRect(x: 0, y: 0, width: 1512, height: 982)] },
             ownBundleIdentifier: "com.bartuck.app",
-            applicationResolver: resolver
+            applicationResolver: resolver,
+            platformPolicy: MenuBarPlatformPolicy(majorVersion: 26)
         )
         let scanned = scanner.scan(selectedIDs: []).first
         try expect(scanned?.displayTitle(for: .english) == "Tencent Lemon",
@@ -340,11 +345,11 @@ private enum MenuBarIdentityTests {
         try expect(!MenuBarScanner.isDiscreteAccessibilitySeed(
             frame: compositeHost,
             displayBounds: [display]
-        ), "macOS 27 must not seed AX discovery with one composite menu-bar host.")
+        ), "A composite menu-bar host must never be used for AX enrichment.")
         try expect(MenuBarScanner.isDiscreteAccessibilitySeed(
             frame: discreteWindow,
             displayBounds: [display]
-        ), "A real per-item status window must remain available for AX enrichment and icon capture.")
+        ), "A real per-item status window can enrich the hybrid compatibility path.")
         try expect(!MenuBarScanner.framesRepresentSameItem(compositeHost, accessibilityChild),
                    "A composite host must not match every overlapping AX child.")
         try expect(MenuBarScanner.framesRepresentSameItem(discreteWindow, accessibilityChild),

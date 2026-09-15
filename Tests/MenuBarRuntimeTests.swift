@@ -20,7 +20,8 @@ private enum MenuBarRuntimeTests {
         let scanner = MenuBarScanner(
             readWindows: { windows },
             readDisplayBounds: { [CGRect(x: 0, y: 0, width: 1512, height: 982)] },
-            ownBundleIdentifier: "com.bartuck.app"
+            ownBundleIdentifier: "com.bartuck.app",
+            platformPolicy: MenuBarPlatformPolicy(majorVersion: 26)
         )
         try expect(scanner.scan(selectedIDs: []).count == 2,
                    "Scanning must exclude both app-owned hosts and their display mirrors.")
@@ -34,8 +35,9 @@ private enum MenuBarRuntimeTests {
         try separatorStates()
         try interactionPolicy()
         try platformPolicies()
+        try accessibilityDiscoveryValues()
         try permissionRequests()
-        print("MenuBarRuntimeTests: 32 passed")
+        print("MenuBarRuntimeTests: 47 passed")
     }
 
     private static func separatorStates() throws {
@@ -160,8 +162,110 @@ private enum MenuBarRuntimeTests {
         try expect(macOS27 == .init(discovery: .accessibilityPreferred,
                                    movement: .accessibility, usesHiddenSection: false),
                    "macOS 27 must avoid moving its composite menu-bar host as a window.")
+        try expect(macOS27.accessibilityMenuBarAttributeNames == ["AXExtrasMenuBar", "AXMenuBar"],
+                   "macOS 27 must read status items from AXExtrasMenuBar before the application menu bar.")
+        try expect(macOS15.usesWindowServerAccessibilitySeeds,
+                   "The hybrid compatibility path may enrich discrete WindowServer items with AX metadata.")
+        try expect(!macOS27.usesWindowServerAccessibilitySeeds,
+                   "macOS 27 must build stable identities from AX items instead of dynamic WindowServer seeds.")
         try expect(future == macOS27,
                    "Later releases must default to the safer macOS 27 accessibility strategy.")
+    }
+
+    private static func accessibilityDiscoveryValues() throws {
+        try expect(
+            MenuBarScanner.accessibilityItemTitle(
+                rawTitle: "", rawDescription: "ChatGPT",
+                applicationName: "ChatGPT", bundleIdentifier: "com.openai.codex"
+            ) == "ChatGPT",
+            "An empty AXTitle must fall through to AXDescription."
+        )
+        try expect(
+            MenuBarScanner.accessibilityItemTitle(
+                rawTitle: "  ", rawDescription: "",
+                applicationName: "Tailscale", bundleIdentifier: "io.tailscale.ipn.macsys"
+            ) == "Tailscale",
+            "A status item without AX text must use its application name."
+        )
+        try expect(
+            MenuBarScanner.accessibilityItemTitle(
+                rawTitle: "CPU 12%", rawDescription: "Ignored",
+                applicationName: "iStat Menus", bundleIdentifier: "com.bjango.istatmenus.status"
+            ) == "CPU 12%",
+            "A meaningful AXTitle must remain the preferred label."
+        )
+        let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        try expect(
+            MenuBarScanner.isRightSideAccessibilityItem(
+                frame: CGRect(x: 1088, y: 5, width: 18, height: 18),
+                displayBounds: [display]
+            ),
+            "A vertically inset status icon must remain inside the menu bar discovery band."
+        )
+        try expect(
+            !MenuBarScanner.isRightSideAccessibilityItem(
+                frame: CGRect(x: 300, y: 5, width: 18, height: 18),
+                displayBounds: [display]
+            ),
+            "Application menus on the left side must not be treated as status items."
+        )
+        try expect(
+            !MenuBarScanner.isRightSideAccessibilityItem(
+                frame: CGRect(x: 1088, y: 200, width: 18, height: 18),
+                displayBounds: [display]
+            ),
+            "An application control below the menu bar must not be discovered."
+        )
+        try expect(
+            MenuBarScanner.isOpaqueAccessibilityHost(
+                rawTitle: "", rawDescription: "", role: "AXGroup",
+                subrole: "AXHostingView", bundleIdentifier: "com.apple.MenuBarAgent"
+            ),
+            "Unnamed MenuBarAgent hosting groups must not become duplicate settings rows."
+        )
+        try expect(
+            !MenuBarScanner.isOpaqueAccessibilityHost(
+                rawTitle: "", rawDescription: "", role: "AXMenuBarItem",
+                subrole: "AXMenuExtra", bundleIdentifier: "io.tailscale.ipn.macsys"
+            ),
+            "An unnamed third-party menu extra must remain discoverable through its application identity."
+        )
+        try expect(
+            !MenuBarScanner.isLikelyApplicationMenu(
+                attributeName: "AXExtrasMenuBar", title: "Download 149 KB/s, Upload 1 MB/s",
+                frame: CGRect(x: 1000, y: 2, width: 57, height: 24)
+            ),
+            "Long dynamic titles in AXExtrasMenuBar are real status items."
+        )
+        try expect(
+            MenuBarScanner.isLikelyApplicationMenu(
+                attributeName: "AXMenuBar", title: "A deliberately long application menu title",
+                frame: CGRect(x: 1000, y: 2, width: 180, height: 24)
+            ),
+            "The AXMenuBar fallback must continue rejecting application menu text."
+        )
+        let firstDynamicID = MenuBarScanner.accessibilityItemIdentifier(
+            bundleIdentifier: "com.bjango.istatmenus.status", title: "CPU 12%",
+            occurrence: 1, isProtected: false
+        )
+        let nextDynamicID = MenuBarScanner.accessibilityItemIdentifier(
+            bundleIdentifier: "com.bjango.istatmenus.status", title: "CPU 18%",
+            occurrence: 1, isProtected: false
+        )
+        try expect(
+            firstDynamicID == "ax|com.bjango.istatmenus.status|1" && nextDynamicID == firstDynamicID,
+            "AX item IDs must stay unique and stable when a live status title changes."
+        )
+        let migrationIDs = MenuBarScanner.accessibilityLegacyIdentifiers(
+            sourceBundleIdentifier: "com.tencent.LemonMonitor",
+            resolvedBundleIdentifier: "com.tencent.Lemon",
+            title: "Tencent Lemon"
+        )
+        try expect(
+            migrationIDs.contains("window|Control Center|com.tencent.LemonMonitor|0") &&
+                migrationIDs.contains("window|控制中心|com.tencent.LemonMonitor|0"),
+            "macOS 27 AX items must retain the prior Control Center-hosted rule IDs."
+        )
     }
 
     private static func permissionRequests() throws {

@@ -43,4 +43,17 @@ struct MenuBarPlatformPolicy: Equatable {
             majorVersion: ProcessInfo.processInfo.operatingSystemVersion.majorVersion
         )
     }
+
+    var accessibilityMenuBarAttributeNames: [String] {
+        switch discovery {
+        case .windowServerOnly:
+            return []
+        case .windowServerWithAccessibility, .accessibilityPreferred:
+            return ["AXExtrasMenuBar", "AXMenuBar"]
+        }
+    }
+
+    var usesWindowServerAccessibilitySeeds: Bool {
+        discovery == .windowServerWithAccessibility
+    }
 }

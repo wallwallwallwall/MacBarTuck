@@ -21,7 +21,9 @@ enum RefreshIsolationTests {
             kCGWindowOwnerName as String: "Fixture", kCGWindowName as String: "utility",
             kCGWindowBounds as String: ["X": 1000, "Y": 0, "Width": 30, "Height": 30]]]
         let scanner = MenuBarScanner(readWindows: { windows },
-            readDisplayBounds: { [CGRect(x: 0, y: 0, width: 1512, height: 982)] }, ownBundleIdentifier: "test.host")
+            readDisplayBounds: { [CGRect(x: 0, y: 0, width: 1512, height: 982)] },
+            ownBundleIdentifier: "test.host",
+            platformPolicy: MenuBarPlatformPolicy(majorVersion: 26))
         let noOpDomain = "RefreshIsolationNoOpTests.\(UUID().uuidString)"
         let noOpDefaults = UserDefaults(suiteName: noOpDomain)!
         defer { noOpDefaults.removePersistentDomain(forName: noOpDomain) }
