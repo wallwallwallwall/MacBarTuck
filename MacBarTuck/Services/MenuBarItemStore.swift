@@ -29,7 +29,18 @@ final class MenuBarItemStore: ObservableObject {
     private let captureOverride: (([MenuBarItem]) async -> [String: NSImage])?
     private let visibilityOverride: ((MenuBarItem) -> MenuItemVisibility)?
     typealias HideHandler = ([MenuBarItem], CGRect, @escaping (Int) -> Void) -> Void
+    typealias NativeOverflowApplyHandler = (
+        [MenuBarItem], [MenuBarItem], @escaping (NativeOverflowTransactionResult) -> Void
+    ) -> Void
+    typealias NativeOverflowRestoreHandler = (
+        [MenuBarItem], @escaping (NativeOverflowTransactionResult) -> Void
+    ) -> Void
     private let hideOverride: HideHandler?
+    private let nativeOverflowApplyOverride: NativeOverflowApplyHandler?
+    private let nativeOverflowRestoreOverride: NativeOverflowRestoreHandler?
+    private let assessmentModeManager: any MenuBarAssessmentModeManaging
+    private let runningBundleIdentifiers: () -> Set<String>
+    private let ownBundleIdentifier: String?
     private let maskingController: MenuBarMaskingController
     private let captureService = MenuBarCaptureService()
     private let activator: any MenuBarItemActivating
@@ -59,6 +70,10 @@ final class MenuBarItemStore: ObservableObject {
     private var isRestoringLayout = false
     private var isTerminating = false
     private var failedLayoutIDs = Set<String>()
+    private var nativeOverflowItemIDs = Set<String>()
+    private var nativeOverflowSpacerCount = 0
+    private var nativeOverflowAppliedSpacerCount = 0
+    private var assessmentHiddenItemIDs = Set<String>()
 
     private struct ItemPresentation: Equatable {
         let id: String
@@ -99,8 +114,15 @@ final class MenuBarItemStore: ObservableObject {
          scanner: MenuBarScanner = MenuBarScanner(),
          captureOverride: (([MenuBarItem]) async -> [String: NSImage])? = nil,
          platformPolicy: MenuBarPlatformPolicy = .current,
+         assessmentModeManager: (any MenuBarAssessmentModeManaging)? = nil,
+         runningBundleIdentifiers: @escaping () -> Set<String> = {
+             Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
+         },
+         ownBundleIdentifier: String? = Bundle.main.bundleIdentifier,
          visibilityOverride: ((MenuBarItem) -> MenuItemVisibility)? = nil,
          hideOverride: HideHandler? = nil,
+         nativeOverflowApplyOverride: NativeOverflowApplyHandler? = nil,
+         nativeOverflowRestoreOverride: NativeOverflowRestoreHandler? = nil,
          maskingController: MenuBarMaskingController? = nil,
          activator: any MenuBarItemActivating = MenuBarItemActivator()) {
         self.language = language
@@ -108,13 +130,24 @@ final class MenuBarItemStore: ObservableObject {
         self.preferences = preferences
         self.scanner = scanner
         self.platformPolicy = platformPolicy
+        self.assessmentModeManager = assessmentModeManager ?? MenuBarAssessmentModeController()
+        self.runningBundleIdentifiers = runningBundleIdentifiers
+        self.ownBundleIdentifier = ownBundleIdentifier
         self.captureOverride = captureOverride
         self.visibilityOverride = visibilityOverride
         self.hideOverride = hideOverride
+        self.nativeOverflowApplyOverride = nativeOverflowApplyOverride
+        self.nativeOverflowRestoreOverride = nativeOverflowRestoreOverride
         self.maskingController = maskingController ?? MenuBarMaskingController()
         self.activator = activator
         isUIPreviewMode = ProcessInfo.processInfo.arguments.contains("--ui-preview")
-        layoutManager = MenuBarLayoutManager(preferences: preferences)
+        layoutManager = MenuBarLayoutManager(
+            preferences: preferences,
+            platformPolicy: platformPolicy
+        )
+        layoutManager.setAccessibilityElementRefresher { item in
+            scanner.refreshAccessibility(for: item)?.element
+        }
         layoutManagementEnabled = layoutManager.isEnabled
         automaticAvoidanceEnabled = preferences.automaticAvoidanceEnabled
         displays = DisplaySnapshotProvider.snapshots()
@@ -165,6 +198,11 @@ final class MenuBarItemStore: ObservableObject {
         platformPolicy.movement == .maskOverlay && !maskedItemIDs.isEmpty
     }
 
+    var hasActiveAssessmentMode: Bool {
+        platformPolicy.movement == .assessmentMode &&
+            assessmentModeManager.activeConfiguration != nil
+    }
+
     func isTemporarilyVisible(_ item: MenuBarItem) -> Bool {
         temporarilyVisibleItemIDs.contains(item.id)
     }
@@ -194,9 +232,17 @@ final class MenuBarItemStore: ObservableObject {
             return (CGWindowID(number), frame)
         }, uniquingKeysWith: { first, _ in first })
         for item in items {
-            if platformPolicy.movement == .maskOverlay,
+            if platformPolicy.movement == .assessmentMode,
+               assessmentHiddenItemIDs.contains(item.id),
+               !temporarilyVisibleItemIDs.contains(item.id) {
+                item.markMaskedHidden()
+            } else if platformPolicy.movement == .maskOverlay,
                maskedItemIDs.contains(item.id),
                !temporarilyVisibleItemIDs.contains(item.id) {
+                item.markMaskedHidden()
+            } else if platformPolicy.movement == .nativeOverflow,
+                      nativeOverflowItemIDs.contains(item.id),
+                      !temporarilyVisibleItemIDs.contains(item.id) {
                 item.markMaskedHidden()
             } else {
                 item.updateVisibility(
@@ -348,6 +394,14 @@ final class MenuBarItemStore: ObservableObject {
             captureTask?.cancel()
             captureTask = nil
             isCapturing = false
+            if platformPolicy.movement == .assessmentMode {
+                assessmentModeManager.invalidate()
+                assessmentHiddenItemIDs.removeAll()
+                failedLayoutIDs.removeAll()
+                temporarilyVisibleItemIDs.removeAll()
+                automaticLayoutSuspended = false
+                DiagnosticLog.shared.record("assessment.permission_revoked")
+            }
             if platformPolicy.movement == .maskOverlay {
                 let maskedCount = maskedItemIDs.union(maskingController.maskedItemIDs).count
                 let removedWindows = maskingController.removeAll()
@@ -409,15 +463,31 @@ final class MenuBarItemStore: ObservableObject {
         if itemsWereReplaced { items = merged }
         if displays != latestDisplays { displays = latestDisplays }
         for item in items {
-            if platformPolicy.movement == .maskOverlay,
+            if platformPolicy.movement == .assessmentMode,
+               assessmentHiddenItemIDs.contains(item.id),
+               !temporarilyVisibleItemIDs.contains(item.id) {
+                item.markMaskedHidden()
+            } else if platformPolicy.movement == .maskOverlay,
                maskedItemIDs.contains(item.id),
                !temporarilyVisibleItemIDs.contains(item.id) {
+                item.markMaskedHidden()
+            } else if platformPolicy.movement == .nativeOverflow,
+                      nativeOverflowItemIDs.contains(item.id),
+                      !temporarilyVisibleItemIDs.contains(item.id) {
                 item.markMaskedHidden()
             } else {
                 item.updateVisibility(displayBounds: displays.map(\.frame))
             }
         }
+        if platformPolicy.movement == .nativeOverflow {
+            nativeOverflowItemIDs.formIntersection(currentIDs)
+            if nativeOverflowItemIDs.isEmpty, isHiddenSectionActive {
+                isHiddenSectionActive = false
+                nativeOverflowAppliedSpacerCount = 0
+            }
+        }
         recomputeManagedSelection(publish: false)
+        reconcileAppliedAssessmentModeAfterRefresh()
         reconcileAppliedMaskOverlayAfterRefresh()
         reconcileTemporarilyVisibleItems()
         preferences.saveKnownItems(knownBefore.union(currentIDs))
@@ -515,19 +585,33 @@ final class MenuBarItemStore: ObservableObject {
             objectWillChange.send()
             return
         }
-        let wasManaged = item.isSelected
-        guard item.rule != rule else { return }
-        DiagnosticLog.shared.record("rule.changed", ["window": Int(item.windowID ?? 0)])
-        item.rule = rule
-        failedLayoutIDs.remove(item.id)
-        preferences.saveRule(rule, for: item.id)
+        let affectedIDs = platformPolicy.movement == .assessmentMode
+            ? MenuBarAssessmentModePolicy.groupItemIDs(
+                items: assessmentItems,
+                itemID: item.id
+            )
+            : [item.id]
+        let affectedItems = items.filter { affectedIDs.contains($0.id) }
+        guard affectedItems.contains(where: { $0.rule != rule }) else { return }
+        let previouslyManaged = affectedItems.filter(\.isSelected)
+        DiagnosticLog.shared.record("rule.changed", [
+            "window": Int(item.windowID ?? 0),
+            "items": affectedItems.count
+        ])
+        var rules = preferences.itemRules
+        for affectedItem in affectedItems {
+            affectedItem.rule = rule
+            failedLayoutIDs.remove(affectedItem.id)
+            rules[affectedItem.id] = rule
+        }
+        preferences.saveRules(rules)
         recomputeManagedSelection()
 
-        if item.isSelected, layoutManagementEnabled {
+        if affectedItems.contains(where: \.isSelected), layoutManagementEnabled {
             layoutOperationMessage = language.text("store.layout.changes_pending")
-        } else if wasManaged, layoutManagementEnabled {
-            temporarilyVisibleItemIDs.remove(item.id)
-            restoreItems([item])
+        } else if !previouslyManaged.isEmpty, layoutManagementEnabled {
+            temporarilyVisibleItemIDs.subtract(affectedIDs)
+            restoreItems(previouslyManaged)
         }
     }
 
@@ -638,12 +722,18 @@ final class MenuBarItemStore: ObservableObject {
             )
         }
 
-        let managedIDs = OverflowPolicy.managedItemIDs(
+        let policyManagedIDs = OverflowPolicy.managedItemIDs(
             from: policyItems,
             availableWidth: automaticAvoidanceEnabled
                 ? constrainedDisplay?.availableMenuWidth
                 : nil
         )
+        let managedIDs = platformPolicy.movement == .assessmentMode
+            ? MenuBarAssessmentModePolicy.expandedManagedItemIDs(
+                items: assessmentItems,
+                managedItemIDs: policyManagedIDs
+            )
+            : policyManagedIDs
 
         for item in items {
             let selected = !item.isAlwaysVisibleSystemItem && managedIDs.contains(item.id)
@@ -665,8 +755,24 @@ final class MenuBarItemStore: ObservableObject {
 
     private func restoreItems(_ itemsToRestore: [MenuBarItem]) {
         guard !itemsToRestore.isEmpty else { return }
+        if platformPolicy.movement == .assessmentMode {
+            applyAssessmentModeLayout(
+                automatic: false,
+                clearTemporaryItems: false
+            )
+            return
+        }
         if platformPolicy.movement == .maskOverlay {
             restoreMaskedItems(itemsToRestore)
+            return
+        }
+        if platformPolicy.movement == .nativeOverflow {
+            guard isHiddenSectionActive else { return }
+            if selectedItems.isEmpty {
+                restoreLayout()
+            } else {
+                applyNativeOverflowLayout(automatic: false)
+            }
             return
         }
         let wasHiddenSectionActive = isHiddenSectionActive
@@ -752,14 +858,31 @@ final class MenuBarItemStore: ObservableObject {
 
     func updateControlItemFrame(_ frame: CGRect) { controlItemFrame = frame }
 
-    func updateStatusItemWindowIDs(control: CGWindowID?, hidden: CGWindowID?) {
+    func updateStatusItemWindowIDs(control: CGWindowID?, hidden: [CGWindowID]) {
         let previousOwnedStatusWindowIDs = ownedStatusWindowIDs
-        ownedStatusWindowIDs.formUnion([control, hidden].compactMap { $0 })
+        ownedStatusWindowIDs = Set([control].compactMap { $0 } + hidden)
         scanner.setOwnedStatusWindowIDs(ownedStatusWindowIDs)
         layoutManager.setStatusItemWindowIDs(control: control, hidden: hidden)
         if ownedStatusWindowIDs != previousOwnedStatusWindowIDs, !items.isEmpty {
             scheduleRefresh(after: 0.4, reason: "owned status windows changed", source: .observation)
         }
+    }
+
+    func updateStatusItemFrameProviders(
+        control: @escaping () -> CGRect?,
+        hidden: [() -> CGRect?]
+    ) {
+        let previousCount = nativeOverflowSpacerCount
+        nativeOverflowSpacerCount = hidden.count
+        layoutManager.setStatusItemFrameProviders(control: control, hidden: hidden)
+        guard platformPolicy.movement == .nativeOverflow,
+              previousCount > 0,
+              previousCount != hidden.count,
+              isHiddenSectionActive,
+              layoutManagementEnabled,
+              !isTerminating else { return }
+        nativeOverflowAppliedSpacerCount = 0
+        scheduleLayoutRetry(after: 0.45)
     }
 
     func setLayoutManagementEnabled(_ enabled: Bool) {
@@ -778,14 +901,17 @@ final class MenuBarItemStore: ObservableObject {
         }
         layoutManager.isEnabled = enabled
         layoutManagementEnabled = enabled
-        onLayoutStateChanged?()
         if enabled {
+            onLayoutStateChanged?()
             automaticLayoutSuspended = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in self?.applyLayout() }
         } else {
             temporarilyVisibleItemIDs.removeAll()
-            isHiddenSectionActive = false
             automaticLayoutWorkItem?.cancel()
+            if platformPolicy.movement != .nativeOverflow {
+                isHiddenSectionActive = false
+                onLayoutStateChanged?()
+            }
             restoreLayout()
         }
     }
@@ -796,7 +922,9 @@ final class MenuBarItemStore: ObservableObject {
               layoutManagementEnabled,
               !isApplyingLayout,
               !selectedItems.isEmpty,
-              (platformPolicy.movement == .maskOverlay || isReadyForManagedLayout),
+              (platformPolicy.movement == .maskOverlay ||
+                platformPolicy.movement == .assessmentMode ||
+                isReadyForManagedLayout),
               selectedItems.contains(where: needsLayoutMovement) else { return }
         automaticLayoutWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
@@ -813,8 +941,16 @@ final class MenuBarItemStore: ObservableObject {
             layoutOperationMessage = language.text("store.preview.rules_applied")
             return
         }
+        if platformPolicy.movement == .assessmentMode {
+            applyAssessmentModeLayout(automatic: automatic)
+            return
+        }
         if platformPolicy.movement == .maskOverlay {
             applyMaskOverlayLayout(automatic: automatic)
+            return
+        }
+        if platformPolicy.movement == .nativeOverflow {
+            applyNativeOverflowLayout(automatic: automatic)
             return
         }
         guard layoutManagementEnabled, !selectedItems.isEmpty else { return }
@@ -916,9 +1052,506 @@ final class MenuBarItemStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: start)
     }
 
+    private var assessmentItems: [MenuBarAssessmentItem] {
+        items.map { item in
+            MenuBarAssessmentItem(
+                id: item.id,
+                resolvedBundleIdentifier: item.bundleIdentifier,
+                hostBundleIdentifier: item.menuBarHostBundleIdentifier,
+                isSelected: item.isSelected,
+                isProtected: item.isAlwaysVisibleSystemItem,
+                isTemporarilyVisible: temporarilyVisibleItemIDs.contains(item.id)
+            )
+        }
+    }
+
+    private func assessmentPlan() -> MenuBarAssessmentPlan {
+        let assessmentItems = assessmentItems
+        var running = runningBundleIdentifiers()
+        running.formUnion(assessmentItems.compactMap { item in
+            MenuBarAssessmentModePolicy.effectiveBundleIdentifier(
+                resolved: item.resolvedBundleIdentifier,
+                host: item.hostBundleIdentifier
+            )
+        })
+        return MenuBarAssessmentModePolicy.plan(
+            items: assessmentItems,
+            runningBundleIdentifiers: running,
+            ownBundleIdentifier: ownBundleIdentifier
+        )
+    }
+
+    private func assessmentConfiguration(
+        for plan: MenuBarAssessmentPlan
+    ) -> MenuBarAssessmentConfiguration {
+        MenuBarAssessmentConfiguration(
+            allowedSystemItems: MenuBarAssessmentModePolicy.allowedSystemItemIdentifiers,
+            allowedBundleIdentifiers: plan.allowedBundleIdentifiers
+        )
+    }
+
+    private func reconcileAppliedAssessmentModeAfterRefresh() {
+        guard platformPolicy.movement == .assessmentMode,
+              assessmentModeManager.activeConfiguration != nil,
+              !isTerminating,
+              !isApplyingLayout,
+              !isRestoringLayout else { return }
+        let plan = assessmentPlan()
+        if selectedItems.isEmpty {
+            restoreAssessmentModeLayout(reportsOperation: false)
+            return
+        }
+        if plan.hiddenBundleIdentifiers.isEmpty,
+           temporarilyVisibleItemIDs.isEmpty,
+           !plan.unresolvedSelectedItemIDs.isEmpty {
+            restoreAssessmentModeLayout(reportsOperation: false)
+            failedLayoutIDs = plan.unresolvedSelectedItemIDs
+            automaticLayoutSuspended = true
+            layoutOperationMessage = language.text("store.layout.partial")
+            return
+        }
+        let configuration = assessmentConfiguration(for: plan)
+        if assessmentModeManager.activeConfiguration == configuration {
+            let stateChanged = assessmentHiddenItemIDs != plan.hiddenItemIDs ||
+                failedLayoutIDs != plan.unresolvedSelectedItemIDs
+            guard stateChanged else { return }
+            commitAssessmentPlan(plan, changed: false)
+            return
+        }
+        applyAssessmentPlan(
+            plan,
+            automatic: true,
+            reportsOperation: false,
+            allowsActiveActivation: false
+        )
+    }
+
+    private func applyAssessmentModeLayout(
+        automatic: Bool,
+        clearTemporaryItems: Bool = true,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        guard platformPolicy.movement == .assessmentMode,
+              layoutManagementEnabled,
+              !isTerminating,
+              !isRestoringLayout else {
+            completion?(false)
+            return
+        }
+        if automatic && automaticLayoutSuspended {
+            completion?(false)
+            return
+        }
+        if automatic && !MenuBarInteractionPolicy.allowsAutomaticLayout(
+            hasTemporarilyVisibleItems: !temporarilyVisibleItemIDs.isEmpty
+        ) {
+            completion?(false)
+            return
+        }
+        if clearTemporaryItems && !automatic {
+            temporarilyVisibleItemIDs.removeAll()
+        }
+
+        let plan = assessmentPlan()
+        guard !plan.hiddenBundleIdentifiers.isEmpty else {
+            restoreAssessmentModeLayout()
+            if !plan.unresolvedSelectedItemIDs.isEmpty {
+                failedLayoutIDs = plan.unresolvedSelectedItemIDs
+                automaticLayoutSuspended = true
+                layoutOperationMessage = language.text("store.layout.partial")
+                objectWillChange.send()
+                onLayoutStateChanged?()
+                completion?(false)
+            } else {
+                completion?(true)
+            }
+            return
+        }
+
+        permissions.refresh(updateTimestamp: false)
+        guard permissions.isReady else {
+            layoutOperationMessage = language.text("store.permission.not_ready")
+            completion?(false)
+            return
+        }
+        let leftButtonPressed = CGEventSource.buttonState(
+            .combinedSessionState,
+            button: .left
+        )
+        let rightButtonPressed = CGEventSource.buttonState(
+            .combinedSessionState,
+            button: .right
+        )
+        if MenuBarInteractionPolicy.shouldDeferLayout(
+            isAutomatic: automatic,
+            leftButtonPressed: leftButtonPressed,
+            rightButtonPressed: rightButtonPressed
+        ) {
+            completion?(false)
+            return
+        }
+        applyAssessmentPlan(
+            plan,
+            automatic: automatic,
+            reportsOperation: true,
+            allowsActiveActivation: false,
+            completion: completion
+        )
+    }
+
+    private func applyAssessmentPlan(
+        _ plan: MenuBarAssessmentPlan,
+        automatic: Bool,
+        reportsOperation: Bool,
+        allowsActiveActivation: Bool,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        guard allowsActiveActivation || activatingItemID == nil else {
+            completion?(false)
+            return
+        }
+        let configuration = assessmentConfiguration(for: plan)
+        if assessmentModeManager.activeConfiguration == configuration {
+            commitAssessmentPlan(plan, changed: false)
+            completion?(plan.unresolvedSelectedItemIDs.isEmpty)
+            return
+        }
+        if isApplyingLayout {
+            if !automatic { shouldApplyLayoutAgain = true }
+            completion?(false)
+            return
+        }
+
+        automaticLayoutWorkItem?.cancel()
+        automaticLayoutWorkItem = nil
+        if !automatic { automaticLayoutSuspended = false }
+        isApplyingLayout = true
+        layoutOperationMessage = language.text("store.layout.applying")
+        if reportsOperation { onLayoutOperationStateChanged?(true) }
+        layoutStartGeneration += 1
+        let generation = layoutStartGeneration
+        let previousHiddenIDs = assessmentHiddenItemIDs
+        DiagnosticLog.shared.record("assessment.layout_begin", [
+            "transaction": generation,
+            "automatic": automatic ? 1 : 0,
+            "bundles": plan.hiddenBundleIdentifiers.count,
+            "items": plan.hiddenItemIDs.count
+        ])
+
+        assessmentModeManager.apply(configuration) { [weak self] result in
+            guard let self, self.layoutStartGeneration == generation else { return }
+            self.isApplyingLayout = false
+            let succeeded: Bool
+            switch result {
+            case .applied(let changed):
+                self.commitAssessmentPlan(plan, changed: changed)
+                succeeded = plan.unresolvedSelectedItemIDs.isEmpty
+            case .unavailable, .failed, .timedOut, .cancelled:
+                self.assessmentHiddenItemIDs = previousHiddenIDs
+                self.failedLayoutIDs.formUnion(
+                    plan.hiddenItemIDs.subtracting(previousHiddenIDs)
+                )
+                self.failedLayoutIDs.formUnion(plan.unresolvedSelectedItemIDs)
+                self.automaticLayoutSuspended = true
+                self.layoutOperationMessage = self.language.text("store.layout.partial")
+                self.refreshVisibilityFromWindows()
+                self.objectWillChange.send()
+                self.onLayoutStateChanged?()
+                succeeded = false
+            }
+            if reportsOperation { self.onLayoutOperationStateChanged?(false) }
+            DiagnosticLog.shared.record("assessment.layout_end", [
+                "transaction": generation,
+                "success": succeeded ? 1 : 0,
+                "hidden": self.assessmentHiddenItemIDs.count
+            ])
+            completion?(succeeded)
+
+            if self.shouldApplyLayoutAgain {
+                self.shouldApplyLayoutAgain = false
+                if !self.automaticLayoutSuspended {
+                    DispatchQueue.main.async { [weak self] in self?.applyLayout() }
+                }
+            }
+            if self.refreshAgain {
+                self.refreshAgain = false
+                self.scheduleRefresh(
+                    after: 0.1,
+                    reason: "assessment operation completed",
+                    source: .observation
+                )
+            }
+        }
+    }
+
+    private func commitAssessmentPlan(
+        _ plan: MenuBarAssessmentPlan,
+        changed: Bool
+    ) {
+        assessmentHiddenItemIDs = plan.hiddenItemIDs
+        failedLayoutIDs = plan.unresolvedSelectedItemIDs
+        automaticLayoutSuspended = !plan.unresolvedSelectedItemIDs.isEmpty
+        isHiddenSectionActive = false
+        for item in items {
+            if assessmentHiddenItemIDs.contains(item.id),
+               !temporarilyVisibleItemIDs.contains(item.id) {
+                item.markMaskedHidden()
+            } else if temporarilyVisibleItemIDs.contains(item.id) {
+                item.visibility = .visible
+            } else if let visibilityOverride {
+                item.visibility = visibilityOverride(item)
+            } else {
+                item.updateVisibility(
+                    displayBounds: displays.map(\.frame),
+                    frameProvider: layoutManager.currentFrame(for:)
+                )
+            }
+        }
+        if !plan.unresolvedSelectedItemIDs.isEmpty {
+            layoutOperationMessage = language.text("store.layout.partial")
+        } else if assessmentHiddenItemIDs.isEmpty {
+            layoutOperationMessage = language.text("store.restore.original")
+        } else if changed {
+            layoutOperationMessage = language.text(
+                "store.layout.updated",
+                assessmentHiddenItemIDs.count
+            )
+        } else {
+            layoutOperationMessage = language.text("store.layout.correct")
+        }
+        objectWillChange.send()
+        onLayoutStateChanged?()
+    }
+
+    private func restoreAssessmentModeLayout(
+        reportsOperation: Bool = true,
+        completion: (() -> Void)? = nil
+    ) {
+        guard platformPolicy.movement == .assessmentMode else {
+            completion?()
+            return
+        }
+        let hadActiveState = assessmentModeManager.activeConfiguration != nil ||
+            !assessmentHiddenItemIDs.isEmpty
+        cancelLayoutWork()
+        if reportsOperation && hadActiveState {
+            isRestoringLayout = true
+            layoutOperationMessage = language.text("store.restore.progress")
+            onLayoutOperationStateChanged?(true)
+        }
+        assessmentModeManager.invalidate()
+        assessmentHiddenItemIDs.removeAll()
+        failedLayoutIDs.removeAll()
+        temporarilyVisibleItemIDs.removeAll()
+        automaticLayoutSuspended = false
+        isHiddenSectionActive = false
+        for item in items {
+            if let visibilityOverride {
+                item.visibility = visibilityOverride(item)
+            } else {
+                item.updateVisibility(
+                    displayBounds: displays.map(\.frame),
+                    frameProvider: layoutManager.currentFrame(for:)
+                )
+            }
+        }
+        if reportsOperation && hadActiveState {
+            isRestoringLayout = false
+            onLayoutOperationStateChanged?(false)
+            layoutOperationMessage = language.text("store.restore.original")
+        }
+        DiagnosticLog.shared.record("assessment.restore", [
+            "active": hadActiveState ? 1 : 0
+        ])
+        objectWillChange.send()
+        onLayoutStateChanged?()
+        completion?()
+    }
+
+    private func applyNativeOverflowLayout(automatic: Bool) {
+        guard platformPolicy.movement == .nativeOverflow,
+              layoutManagementEnabled else { return }
+        guard !isTerminating, !isRestoringLayout, activatingItemID == nil else { return }
+        if automatic && automaticLayoutSuspended { return }
+        if automatic && !MenuBarInteractionPolicy.allowsAutomaticLayout(
+            hasTemporarilyVisibleItems: !temporarilyVisibleItemIDs.isEmpty
+        ) { return }
+
+        let planned = selectedItems
+        if planned.isEmpty {
+            if isHiddenSectionActive { restoreLayout() }
+            return
+        }
+        permissions.refresh(updateTimestamp: false)
+        guard permissions.isReady else {
+            layoutOperationMessage = language.text("store.permission.not_ready")
+            return
+        }
+        guard isReadyForManagedLayout else {
+            layoutOperationMessage = language.text("store.layout.waiting_icons")
+            return
+        }
+        let plannedIDs = Set(planned.map(\.id))
+        if isHiddenSectionActive,
+           nativeOverflowItemIDs == plannedIDs,
+           temporarilyVisibleItemIDs.isEmpty,
+           nativeOverflowAppliedSpacerCount == nativeOverflowSpacerCount {
+            failedLayoutIDs.subtract(plannedIDs)
+            if !automatic { automaticLayoutSuspended = false }
+            layoutOperationMessage = language.text("store.layout.correct")
+            DiagnosticLog.shared.record("native.layout_noop_store", [
+                "automatic": automatic ? 1 : 0,
+                "selected": planned.count,
+                "spacers": nativeOverflowSpacerCount
+            ])
+            return
+        }
+        if isApplyingLayout {
+            if !automatic { shouldApplyLayoutAgain = true }
+            return
+        }
+
+        let leftButtonPressed = CGEventSource.buttonState(.combinedSessionState, button: .left)
+        let rightButtonPressed = CGEventSource.buttonState(.combinedSessionState, button: .right)
+        if MenuBarInteractionPolicy.shouldDeferLayout(
+            isAutomatic: automatic,
+            leftButtonPressed: leftButtonPressed,
+            rightButtonPressed: rightButtonPressed
+        ) {
+            DiagnosticLog.shared.record("native.layout_deferred_input", [
+                "left": leftButtonPressed ? 1 : 0,
+                "right": rightButtonPressed ? 1 : 0
+            ])
+            return
+        }
+
+        automaticLayoutWorkItem?.cancel()
+        automaticLayoutWorkItem = nil
+        if !automatic { automaticLayoutSuspended = false }
+        let retained = items.filter {
+            !plannedIDs.contains($0.id) && !$0.isAlwaysVisibleSystemItem
+        }
+        let previousOverflowIDs = nativeOverflowItemIDs
+        let previousActive = isHiddenSectionActive
+        let previousSpacerCount = nativeOverflowAppliedSpacerCount
+        isApplyingLayout = true
+        layoutOperationMessage = language.text("store.layout.applying")
+        onLayoutOperationStateChanged?(true)
+        layoutStartGeneration += 1
+        let startGeneration = layoutStartGeneration
+        failedLayoutIDs.subtract(plannedIDs)
+        DiagnosticLog.shared.record("native.layout_store_begin", [
+            "transaction": startGeneration,
+            "automatic": automatic ? 1 : 0,
+            "managed": planned.count,
+            "retained": retained.count,
+            "spacers": nativeOverflowSpacerCount
+        ])
+
+        let start = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.layoutStartGeneration == startGeneration,
+                  self.isApplyingLayout else { return }
+            self.layoutStartWorkItem = nil
+            self.executeNativeOverflowApply(
+                managed: planned,
+                retained: retained
+            ) { [weak self] result in
+                guard let self,
+                      self.layoutStartGeneration == startGeneration else { return }
+                if result.succeeded {
+                    self.nativeOverflowItemIDs = plannedIDs
+                    self.temporarilyVisibleItemIDs.subtract(plannedIDs)
+                    self.isHiddenSectionActive = true
+                    self.nativeOverflowAppliedSpacerCount = self.nativeOverflowSpacerCount
+                    self.failedLayoutIDs.subtract(plannedIDs)
+                    self.automaticLayoutSuspended = false
+                } else {
+                    self.nativeOverflowItemIDs = previousOverflowIDs
+                    self.isHiddenSectionActive = previousActive
+                    self.nativeOverflowAppliedSpacerCount = previousSpacerCount
+                    self.failedLayoutIDs.formUnion(plannedIDs.subtracting(previousOverflowIDs))
+                    self.automaticLayoutSuspended = true
+                }
+                self.onLayoutStateChanged?()
+                self.onLayoutOperationStateChanged?(false)
+
+                let settleDelay: TimeInterval = result.succeeded ? 0.9 : 0.25
+                DispatchQueue.main.asyncAfter(deadline: .now() + settleDelay) { [weak self] in
+                    guard let self,
+                          self.layoutStartGeneration == startGeneration else { return }
+                    self.isApplyingLayout = false
+                    if result.succeeded {
+                        for item in self.items {
+                            if self.nativeOverflowItemIDs.contains(item.id),
+                               !self.temporarilyVisibleItemIDs.contains(item.id) {
+                                item.markMaskedHidden()
+                            } else {
+                                item.updateVisibility(displayBounds: self.displays.map(\.frame))
+                            }
+                        }
+                        self.layoutOperationMessage = result.movedCount > 0
+                            ? self.language.text("store.layout.updated", result.movedCount)
+                            : self.language.text("store.layout.correct")
+                    } else {
+                        self.refreshVisibilityFromWindows()
+                        self.layoutOperationMessage = self.language.text("store.layout.partial")
+                    }
+                    DiagnosticLog.shared.record("native.layout_store_end", [
+                        "transaction": startGeneration,
+                        "moved": result.movedCount,
+                        "success": result.succeeded ? 1 : 0,
+                        "rollback": result.rollbackSucceeded ? 1 : 0,
+                        "hidden": self.nativeOverflowItemIDs.count
+                    ])
+                    self.objectWillChange.send()
+                    if self.shouldApplyLayoutAgain {
+                        self.shouldApplyLayoutAgain = false
+                        if !self.automaticLayoutSuspended {
+                            self.scheduleLayoutRetry(after: 0.4)
+                        }
+                    }
+                    if self.refreshAgain { self.refreshAgain = false }
+                    self.scheduleRefresh(
+                        after: 0.25,
+                        reason: "native overflow settled",
+                        source: .observation
+                    )
+                }
+            }
+        }
+        layoutStartWorkItem = start
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: start)
+    }
+
+    private func executeNativeOverflowApply(
+        managed: [MenuBarItem],
+        retained: [MenuBarItem],
+        completion: @escaping (NativeOverflowTransactionResult) -> Void
+    ) {
+        if let nativeOverflowApplyOverride {
+            nativeOverflowApplyOverride(managed, retained, completion)
+        } else {
+            layoutManager.applyNativeOverflow(
+                managed: managed,
+                retained: retained,
+                completion: completion
+            )
+        }
+    }
+
     private func needsLayoutMovement(_ item: MenuBarItem) -> Bool {
+        if platformPolicy.movement == .assessmentMode {
+            return !assessmentHiddenItemIDs.contains(item.id) ||
+                temporarilyVisibleItemIDs.contains(item.id)
+        }
         if platformPolicy.movement == .maskOverlay {
             return !maskedItemIDs.contains(item.id)
+        }
+        if platformPolicy.movement == .nativeOverflow {
+            return !nativeOverflowItemIDs.contains(item.id) ||
+                temporarilyVisibleItemIDs.contains(item.id) ||
+                nativeOverflowAppliedSpacerCount != nativeOverflowSpacerCount
         }
         let visibility = visibilityOverride?(item) ?? layoutManager.visibility(of: item)
         return visibility != .hidden
@@ -935,6 +1568,9 @@ final class MenuBarItemStore: ObservableObject {
         guard layoutManagementEnabled, !temporarilyVisibleItemIDs.isEmpty else { return }
         DiagnosticLog.shared.record("activation.retuck_requested", ["items": temporarilyVisibleItemIDs.count])
         layoutOperationMessage = language.text("store.activation.retuck_progress")
+        if platformPolicy.movement == .assessmentMode {
+            temporarilyVisibleItemIDs.removeAll()
+        }
         applyLayout()
     }
 
@@ -1193,6 +1829,14 @@ final class MenuBarItemStore: ObservableObject {
             completion()
             return
         }
+        if platformPolicy.movement == .assessmentMode {
+            restoreAssessmentModeLayout(completion: completion)
+            return
+        }
+        if platformPolicy.movement == .nativeOverflow {
+            restoreNativeOverflowLayout(completion: completion)
+            return
+        }
         if platformPolicy.movement == .maskOverlay {
             cancelLayoutWork()
             temporarilyVisibleItemIDs.removeAll()
@@ -1251,6 +1895,88 @@ final class MenuBarItemStore: ObservableObject {
         }
     }
 
+    private func restoreNativeOverflowLayout(completion: @escaping () -> Void) {
+        guard platformPolicy.movement == .nativeOverflow else {
+            completion()
+            return
+        }
+        if !isHiddenSectionActive && nativeOverflowItemIDs.isEmpty {
+            failedLayoutIDs.removeAll()
+            nativeOverflowAppliedSpacerCount = 0
+            onLayoutStateChanged?()
+            completion()
+            return
+        }
+
+        cancelLayoutWork()
+        temporarilyVisibleItemIDs.removeAll()
+        isRestoringLayout = true
+        layoutOperationMessage = language.text("store.restore.progress")
+        onLayoutOperationStateChanged?(true)
+        let generation = layoutStartGeneration
+        let planned = items.filter { !$0.isAlwaysVisibleSystemItem }
+        let previouslyOverflowed = nativeOverflowItemIDs
+        DiagnosticLog.shared.record("native.restore_store_begin", [
+            "transaction": generation,
+            "items": planned.count,
+            "hidden": previouslyOverflowed.count
+        ])
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self, self.layoutStartGeneration == generation else {
+                completion()
+                return
+            }
+            self.executeNativeOverflowRestore(items: planned) { [weak self] result in
+                guard let self, self.layoutStartGeneration == generation else {
+                    completion()
+                    return
+                }
+                self.nativeOverflowItemIDs.removeAll()
+                self.nativeOverflowAppliedSpacerCount = 0
+                self.isHiddenSectionActive = false
+                self.isRestoringLayout = false
+                self.failedLayoutIDs.removeAll()
+                self.onLayoutStateChanged?()
+                self.onLayoutOperationStateChanged?(false)
+                if result.succeeded {
+                    for item in self.items where previouslyOverflowed.contains(item.id) {
+                        item.visibility = .visible
+                    }
+                    self.layoutOperationMessage = self.language.text("store.restore.original")
+                } else {
+                    self.layoutOperationMessage = self.language.text("store.restore.original_partial")
+                }
+                DiagnosticLog.shared.record("native.restore_store_end", [
+                    "transaction": generation,
+                    "moved": result.movedCount,
+                    "success": result.succeeded ? 1 : 0,
+                    "rollback": result.rollbackSucceeded ? 1 : 0
+                ])
+                self.objectWillChange.send()
+                completion()
+                if !self.isTerminating {
+                    self.scheduleRefresh(
+                        after: 0.3,
+                        reason: "native restore settled",
+                        source: .observation
+                    )
+                }
+            }
+        }
+    }
+
+    private func executeNativeOverflowRestore(
+        items: [MenuBarItem],
+        completion: @escaping (NativeOverflowTransactionResult) -> Void
+    ) {
+        if let nativeOverflowRestoreOverride {
+            nativeOverflowRestoreOverride(items, completion)
+        } else {
+            layoutManager.restoreNativeOverflow(items: items, completion: completion)
+        }
+    }
+
     func restoreAllAndDisable() {
         if isUIPreviewMode {
             layoutManagementEnabled = false
@@ -1291,7 +2017,9 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     func restoreProtectedSystemItems(completion: @escaping () -> Void = {}) {
-        if platformPolicy.movement == .maskOverlay {
+        if platformPolicy.movement == .maskOverlay ||
+            platformPolicy.movement == .nativeOverflow ||
+            platformPolicy.movement == .assessmentMode {
             completion()
             return
         }
@@ -1383,6 +2111,16 @@ final class MenuBarItemStore: ObservableObject {
         guard activatingItemID == nil else { return }
         activatingItemID = item.id
         lastActivationError = nil
+        if platformPolicy.movement == .assessmentMode,
+           assessmentHiddenItemIDs.contains(item.id) {
+            activateAssessmentModeItem(
+                item,
+                mouseButton: mouseButton,
+                restoreCursorLocation: layoutManager.currentPointerLocation(),
+                retryCount: retryCount
+            )
+            return
+        }
         if platformPolicy.movement == .maskOverlay,
            maskedItemIDs.contains(item.id) {
             activateMaskedItem(
@@ -1457,6 +2195,114 @@ final class MenuBarItemStore: ObservableObject {
         item.axElement = fresh.element
         item.supportsPressAction = true
         return activator.activateDirectly(item)
+    }
+
+    private func activateAssessmentModeItem(
+        _ item: MenuBarItem,
+        mouseButton: CGMouseButton,
+        restoreCursorLocation: CGPoint?,
+        retryCount: Int
+    ) {
+        let groupIDs = MenuBarAssessmentModePolicy.groupItemIDs(
+            items: assessmentItems,
+            itemID: item.id
+        )
+        temporarilyVisibleItemIDs.formUnion(groupIDs)
+        layoutOperationMessage = language.text("store.activation.reveal_once")
+        let plan = assessmentPlan()
+        applyAssessmentPlan(
+            plan,
+            automatic: false,
+            reportsOperation: false,
+            allowsActiveActivation: true
+        ) { [weak self] success in
+            guard let self, self.activatingItemID == item.id else { return }
+            guard success else {
+                self.temporarilyVisibleItemIDs.subtract(groupIDs)
+                self.lastActivationError = self.language.text(
+                    "store.activation.reveal_failed",
+                    item.tooltip(for: self.language.selectedLanguage)
+                )
+                self.finishActivation()
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                self?.performAssessmentModeActivation(
+                    item,
+                    mouseButton: mouseButton,
+                    restoreCursorLocation: restoreCursorLocation,
+                    retryCount: retryCount
+                )
+            }
+        }
+    }
+
+    private func performAssessmentModeActivation(
+        _ item: MenuBarItem,
+        mouseButton: CGMouseButton,
+        restoreCursorLocation: CGPoint?,
+        retryCount: Int
+    ) {
+        guard activatingItemID == item.id, !isTerminating else { return }
+        if mouseButton == .left {
+            if activator.activateDirectly(item) ||
+                activateUsingFreshAccessibility(item) ||
+                (item.windowID == nil && activator.activateViaAccessibilityHitTest(item)) {
+                DiagnosticLog.shared.record("assessment.activation_complete", ["button": 1])
+                finishActivation()
+                return
+            }
+            guard item.windowID != nil else {
+                retryActivation(
+                    item,
+                    mouseButton: mouseButton,
+                    retryCount: retryCount,
+                    message: language.text(
+                        "store.activation.failed",
+                        item.tooltip(for: language.selectedLanguage)
+                    )
+                )
+                return
+            }
+            activator.activateMovedItem(item, mouseButton: .left) { [weak self] success in
+                guard let self else { return }
+                self.layoutManager.restorePointerLocation(restoreCursorLocation)
+                guard success else {
+                    self.retryActivation(
+                        item,
+                        mouseButton: mouseButton,
+                        retryCount: retryCount,
+                        message: self.language.text(
+                            "store.activation.failed",
+                            item.tooltip(for: self.language.selectedLanguage)
+                        )
+                    )
+                    return
+                }
+                DiagnosticLog.shared.record("assessment.activation_complete", ["button": 1])
+                self.finishActivation()
+            }
+            return
+        }
+
+        activator.activateRightClick(item) { [weak self] success in
+            guard let self else { return }
+            self.layoutManager.restorePointerLocation(restoreCursorLocation)
+            guard success else {
+                self.retryActivation(
+                    item,
+                    mouseButton: mouseButton,
+                    retryCount: retryCount,
+                    message: self.language.text(
+                        "store.activation.context_failed",
+                        item.tooltip(for: self.language.selectedLanguage)
+                    )
+                )
+                return
+            }
+            DiagnosticLog.shared.record("assessment.activation_complete", ["button": 2])
+            self.finishActivation()
+        }
     }
 
     private func activateByTemporarilyRevealing(_ item: MenuBarItem, mouseButton: CGMouseButton, restoreCursorLocation: CGPoint?, retryCount: Int) {
@@ -1667,8 +2513,23 @@ final class MenuBarItemStore: ObservableObject {
             layoutEnabled: layoutManagementEnabled
         )
         guard presentation == .keepVisibleUntilRetucked else { return }
-        temporarilyVisibleItemIDs.insert(item.id)
-        items.first(where: { $0.id == item.id })?.visibility = .visible
+        if platformPolicy.movement == .assessmentMode {
+            temporarilyVisibleItemIDs.formUnion(
+                MenuBarAssessmentModePolicy.groupItemIDs(
+                    items: assessmentItems,
+                    itemID: item.id
+                )
+            )
+        }
+        if platformPolicy.movement == .nativeOverflow {
+            nativeOverflowItemIDs.remove(item.id)
+        }
+        if platformPolicy.movement != .assessmentMode {
+            temporarilyVisibleItemIDs.insert(item.id)
+        }
+        for revealedItem in items where temporarilyVisibleItemIDs.contains(revealedItem.id) {
+            revealedItem.visibility = .visible
+        }
         DiagnosticLog.shared.record("activation.reveal_once", ["temporary": temporarilyVisibleItemIDs.count])
         objectWillChange.send()
     }

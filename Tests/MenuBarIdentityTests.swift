@@ -30,6 +30,7 @@ private enum MenuBarIdentityTests {
         try inputSourcePresentation()
         try applicationIdentityResolution()
         try macOS27AccessibilityDiscoveryBoundaries()
+        try ownedStatusItemsStayExcluded()
         try accessibilityRestorationFrame()
         try stableMirrorIdentity()
         try actualVisibility()
@@ -368,6 +369,34 @@ private enum MenuBarIdentityTests {
                    "A composite host must not match every overlapping AX child.")
         try expect(MenuBarScanner.framesRepresentSameItem(discreteWindow, accessibilityChild),
                    "Similar per-item WindowServer and AX frames must still merge.")
+    }
+
+    private static func ownedStatusItemsStayExcluded() throws {
+        let baselineScanner = MenuBarScanner(
+            readWindows: { mirroredWindows() },
+            readDisplayBounds: { displays },
+            ownBundleIdentifier: "com.bartuck.app",
+            platformPolicy: MenuBarPlatformPolicy(majorVersion: 26)
+        )
+        let extraSeparators = [
+            window(101, "BarTuckHiddenSection2", x: -900, width: 680, height: 33),
+            window(102, "BarTuckHiddenSection3", x: -1_580, width: 680, height: 33)
+        ]
+        let scanner = MenuBarScanner(
+            readWindows: { mirroredWindows() + extraSeparators },
+            readDisplayBounds: { displays },
+            ownBundleIdentifier: "com.bartuck.app",
+            platformPolicy: MenuBarPlatformPolicy(majorVersion: 26)
+        )
+
+        try expect(
+            scanner.scan(selectedIDs: []).map(\.id) == baselineScanner.scan(selectedIDs: []).map(\.id),
+            "Every MacBarTuck overflow spacer must stay out of the menu-item list."
+        )
+        try expect(
+            scanner.windowSignature() == baselineScanner.windowSignature(),
+            "Overflow spacer creation must not look like an external menu-bar change."
+        )
     }
 
     private static func accessibilityRestorationFrame() throws {

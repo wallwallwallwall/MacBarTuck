@@ -240,7 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let needsRestore = store.hasActiveMaskOverlay ||
+        let needsRestore = store.hasActiveMaskOverlay || store.hasActiveAssessmentMode ||
             (store.layoutManagementEnabled && !store.selectedItems.isEmpty)
         guard needsRestore else { return .terminateNow }
         guard !isFinishingTermination else { return .terminateLater }

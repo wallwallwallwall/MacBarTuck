@@ -71,11 +71,38 @@ private final class RefreshItemActivator: MenuBarItemActivating {
     }
 }
 
+@MainActor
+private final class RefreshAssessmentManager: MenuBarAssessmentModeManaging {
+    var isAvailable = true
+    private(set) var activeConfiguration: MenuBarAssessmentConfiguration?
+    private(set) var appliedConfigurations = [MenuBarAssessmentConfiguration]()
+    private(set) var invalidateCount = 0
+    var results = [MenuBarAssessmentApplyResult]()
+
+    func apply(
+        _ configuration: MenuBarAssessmentConfiguration,
+        completion: @escaping (MenuBarAssessmentApplyResult) -> Void
+    ) {
+        appliedConfigurations.append(configuration)
+        let result = results.isEmpty ? .applied(changed: true) : results.removeFirst()
+        if case .applied = result { activeConfiguration = configuration }
+        completion(result)
+    }
+
+    func invalidate() {
+        invalidateCount += 1
+        activeConfiguration = nil
+    }
+}
+
 @main
 @MainActor
 enum RefreshIsolationTests {
     static func main() async throws {
         _ = NSApplication.shared
+        try await assessmentModeStoreLifecycle()
+        try await failedAssessmentModeApplyDoesNotPublishHiddenState()
+        try await nativeOverflowStoreLifecycle()
         try await maskOverlayStoreLifecycle()
         try await directMaskedActivationKeepsNativeSlotCovered()
         try await revokedScreenRecordingRemovesMasks()
@@ -320,6 +347,427 @@ enum RefreshIsolationTests {
         print("RefreshIsolationTests: refresh isolation and mask overlay lifecycle passed")
     }
 
+    private static func assessmentModeStoreLifecycle() async throws {
+        let domain = "AssessmentModeStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let preferences = PreferencesStore(defaults: defaults)
+        preferences.hasCompletedOnboarding = true
+        preferences.layoutManagementEnabled = true
+        preferences.automaticAvoidanceEnabled = false
+        let language = AppLanguageController(
+            defaults: defaults,
+            preferredLanguages: ["en"],
+            arguments: [],
+            rootBundle: .main
+        )
+        let permissions = PermissionManager(
+            accessibilityStatus: { true },
+            accessibilityRequest: {},
+            screenCaptureStatus: { true },
+            screenCaptureRequest: { true },
+            openSettings: { _ in },
+            history: nil,
+            language: language
+        )
+        let windows: [[String: Any]] = [
+            [kCGWindowLayer as String: 25,
+             kCGWindowNumber as String: 3_300_000_001,
+             kCGWindowOwnerPID as String: -1,
+             kCGWindowOwnerName as String: "com.example.metrics",
+             kCGWindowName as String: "CPU",
+             kCGWindowBounds as String: ["X": 940, "Y": 0, "Width": 30, "Height": 30]],
+            [kCGWindowLayer as String: 25,
+             kCGWindowNumber as String: 3_300_000_002,
+             kCGWindowOwnerPID as String: -1,
+             kCGWindowOwnerName as String: "com.example.metrics",
+             kCGWindowName as String: "Network",
+             kCGWindowBounds as String: ["X": 980, "Y": 0, "Width": 30, "Height": 30]],
+            [kCGWindowLayer as String: 25,
+             kCGWindowNumber as String: 3_300_000_003,
+             kCGWindowOwnerPID as String: -1,
+             kCGWindowOwnerName as String: "com.example.chat",
+             kCGWindowName as String: "Chat",
+             kCGWindowBounds as String: ["X": 1_020, "Y": 0, "Width": 30, "Height": 30]]
+        ]
+        let policy = MenuBarPlatformPolicy(
+            discovery: .windowServerOnly,
+            movement: .assessmentMode,
+            usesHiddenSection: false
+        )
+        let scanner = MenuBarScanner(
+            readWindows: { windows },
+            readDisplayBounds: { [CGRect(x: 0, y: 0, width: 1_512, height: 982)] },
+            ownBundleIdentifier: "com.bartuck.tests",
+            platformPolicy: policy
+        )
+        let seeds = scanner.scan(selectedIDs: [])
+        let cpuSeed = seeds.first { $0.title == "CPU" }!
+        preferences.saveRule(.alwaysHidden, for: cpuSeed.id)
+
+        let assessmentManager = RefreshAssessmentManager()
+        var runningBundleIdentifiers: Set<String> = [
+            "com.bartuck.tests", "com.example.metrics", "com.example.chat"
+        ]
+        let activator = RefreshItemActivator()
+        activator.directResult = true
+        let store = MenuBarItemStore(
+            permissions: permissions,
+            preferences: preferences,
+            language: language,
+            scanner: scanner,
+            captureOverride: { items in
+                Dictionary(uniqueKeysWithValues: items.map {
+                    ($0.id, NSImage(size: NSSize(width: 24, height: 24)))
+                })
+            },
+            platformPolicy: policy,
+            assessmentModeManager: assessmentManager,
+            runningBundleIdentifiers: { runningBundleIdentifiers },
+            ownBundleIdentifier: "com.bartuck.tests",
+            activator: activator
+        )
+        var operationStates = [Bool]()
+        store.onLayoutOperationStateChanged = { operationStates.append($0) }
+        store.refresh()
+        guard await waitUntil({
+            store.isReadyForManagedLayout && store.selectedItems.count == 2
+        }) else {
+            throw NSError(domain: "RefreshIsolation", code: 80,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Selecting one assessment-mode item did not synchronize its bundle siblings."])
+        }
+
+        store.applyLayout()
+        guard await waitUntil({
+            assessmentManager.appliedConfigurations.count == 1 &&
+                store.overflowItems.count == 2
+        }) else {
+            throw NSError(domain: "RefreshIsolation", code: 81,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Assessment mode did not publish the hidden bundle after activation."])
+        }
+        let firstConfiguration = assessmentManager.appliedConfigurations[0]
+        guard !firstConfiguration.allowedBundleIdentifiers.contains("com.example.metrics"),
+              firstConfiguration.allowedBundleIdentifiers.contains("com.example.chat"),
+              firstConfiguration.allowedBundleIdentifiers.contains("com.bartuck.tests"),
+              !store.isHiddenSectionActive,
+              operationStates == [true, false] else {
+            throw NSError(domain: "RefreshIsolation", code: 82,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Assessment mode used the wrong allowlist or exposed a spacer section."])
+        }
+
+        for _ in 0..<12 { store.refresh(source: .externalChange) }
+        try await Task.sleep(for: .milliseconds(350))
+        guard assessmentManager.appliedConfigurations.count == 1,
+              store.overflowItems.count == 2 else {
+            throw NSError(domain: "RefreshIsolation", code: 83,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "An unchanged refresh replaced the active assessment assertion."])
+        }
+
+        runningBundleIdentifiers.insert("com.example.new")
+        store.refresh(source: .externalChange)
+        guard await waitUntil({ assessmentManager.appliedConfigurations.count == 2 }),
+              assessmentManager.activeConfiguration?.allowedBundleIdentifiers.contains(
+                "com.example.new"
+              ) == true else {
+            throw NSError(domain: "RefreshIsolation", code: 84,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "A newly launched application was not added to the active allowlist."])
+        }
+
+        let cpuItem = store.items.first { $0.title == "CPU" }!
+        let metricItemIDs = Set(store.items.filter {
+            $0.bundleIdentifier == "com.example.metrics"
+        }.map(\.id))
+        store.activate(cpuItem)
+        guard await waitUntil({
+            assessmentManager.appliedConfigurations.count == 3 &&
+                store.temporarilyVisibleItemIDs == metricItemIDs &&
+                activator.directActivationCount == 1 &&
+                store.activatingItemID == nil
+        }), assessmentManager.activeConfiguration?.allowedBundleIdentifiers.contains(
+            "com.example.metrics"
+        ) == true else {
+            throw NSError(domain: "RefreshIsolation", code: 85,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Activating a tucked assessment item did not reveal its whole bundle first."])
+        }
+
+        for _ in 0..<6 { store.refresh(source: .observation) }
+        try await Task.sleep(for: .milliseconds(250))
+        guard assessmentManager.appliedConfigurations.count == 3,
+              store.temporarilyVisibleItemIDs == metricItemIDs else {
+            throw NSError(domain: "RefreshIsolation", code: 86,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "A read-only refresh unexpectedly retucked a temporarily visible bundle."])
+        }
+
+        store.retuckTemporarilyVisibleItems()
+        guard await waitUntil({
+            assessmentManager.appliedConfigurations.count == 4 &&
+                store.temporarilyVisibleItemIDs.isEmpty &&
+                store.overflowItems.count == 2
+        }) else {
+            throw NSError(domain: "RefreshIsolation", code: 87,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Retuck did not restore the assessment-mode bundle filter."])
+        }
+
+        store.setRule(.alwaysVisible, for: cpuItem)
+        guard await waitUntil({
+            assessmentManager.invalidateCount == 1 && store.selectedItems.isEmpty
+        }), store.items.filter({ $0.bundleIdentifier == "com.example.metrics" })
+            .allSatisfy({ $0.rule == .alwaysVisible }),
+           store.overflowItems.isEmpty else {
+            throw NSError(domain: "RefreshIsolation", code: 88,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Changing one bundle sibling did not restore and synchronize the whole bundle."])
+        }
+
+        store.setRule(.alwaysHidden, for: cpuItem)
+        store.applyLayout()
+        guard await waitUntil({ assessmentManager.activeConfiguration != nil }) else {
+            throw NSError(domain: "RefreshIsolation", code: 89,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "The assessment filter could not be re-enabled before termination."])
+        }
+        await withCheckedContinuation { continuation in
+            store.prepareForTermination { continuation.resume() }
+        }
+        guard assessmentManager.activeConfiguration == nil,
+              assessmentManager.invalidateCount == 2,
+              store.overflowItems.isEmpty else {
+            throw NSError(domain: "RefreshIsolation", code: 90,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Termination left the assessment assertion or hidden state active."])
+        }
+    }
+
+    private static func failedAssessmentModeApplyDoesNotPublishHiddenState() async throws {
+        let domain = "FailedAssessmentModeStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let preferences = PreferencesStore(defaults: defaults)
+        preferences.hasCompletedOnboarding = true
+        preferences.layoutManagementEnabled = true
+        preferences.automaticAvoidanceEnabled = false
+        let language = AppLanguageController(
+            defaults: defaults,
+            preferredLanguages: ["en"],
+            arguments: [],
+            rootBundle: .main
+        )
+        let permissions = PermissionManager(
+            accessibilityStatus: { true },
+            accessibilityRequest: {},
+            screenCaptureStatus: { true },
+            screenCaptureRequest: { true },
+            openSettings: { _ in },
+            history: nil,
+            language: language
+        )
+        let windows: [[String: Any]] = [[
+            kCGWindowLayer as String: 25,
+            kCGWindowNumber as String: 3_200_000_001,
+            kCGWindowOwnerPID as String: -1,
+            kCGWindowOwnerName as String: "com.example.failure",
+            kCGWindowName as String: "Failure",
+            kCGWindowBounds as String: ["X": 980, "Y": 0, "Width": 30, "Height": 30]
+        ]]
+        let policy = MenuBarPlatformPolicy(
+            discovery: .windowServerOnly,
+            movement: .assessmentMode,
+            usesHiddenSection: false
+        )
+        let scanner = MenuBarScanner(
+            readWindows: { windows },
+            readDisplayBounds: { [CGRect(x: 0, y: 0, width: 1_512, height: 982)] },
+            ownBundleIdentifier: "com.bartuck.tests",
+            platformPolicy: policy
+        )
+        let seed = scanner.scan(selectedIDs: []).first!
+        preferences.saveRule(.alwaysHidden, for: seed.id)
+        let assessmentManager = RefreshAssessmentManager()
+        assessmentManager.results = [.failed("fixture")]
+        let store = MenuBarItemStore(
+            permissions: permissions,
+            preferences: preferences,
+            language: language,
+            scanner: scanner,
+            captureOverride: { items in
+                Dictionary(uniqueKeysWithValues: items.map {
+                    ($0.id, NSImage(size: NSSize(width: 24, height: 24)))
+                })
+            },
+            platformPolicy: policy,
+            assessmentModeManager: assessmentManager,
+            runningBundleIdentifiers: {
+                ["com.bartuck.tests", "com.example.failure"]
+            },
+            ownBundleIdentifier: "com.bartuck.tests"
+        )
+        store.refresh()
+        guard await waitUntil({ store.isReadyForManagedLayout }) else {
+            throw NSError(domain: "RefreshIsolation", code: 91)
+        }
+        store.applyLayout()
+        guard await waitUntil({ assessmentManager.appliedConfigurations.count == 1 }),
+              assessmentManager.activeConfiguration == nil,
+              store.overflowItems.isEmpty,
+              store.layoutOperationMessage == language.text("store.layout.partial") else {
+            throw NSError(domain: "RefreshIsolation", code: 92,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "A rejected assessment assertion was incorrectly reported as hidden."])
+        }
+    }
+
+    private static func nativeOverflowStoreLifecycle() async throws {
+        let domain = "NativeOverflowStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let preferences = PreferencesStore(defaults: defaults)
+        preferences.hasCompletedOnboarding = true
+        preferences.layoutManagementEnabled = true
+        let language = AppLanguageController(
+            defaults: defaults,
+            preferredLanguages: ["en"],
+            arguments: [],
+            rootBundle: .main
+        )
+        let permissions = PermissionManager(
+            accessibilityStatus: { true },
+            accessibilityRequest: {},
+            screenCaptureStatus: { true },
+            screenCaptureRequest: { true },
+            openSettings: { _ in },
+            history: nil,
+            language: language
+        )
+        let windows: [[String: Any]] = [
+            [kCGWindowLayer as String: 25,
+             kCGWindowNumber as String: 3_800_000_001,
+             kCGWindowOwnerPID as String: -1,
+             kCGWindowOwnerName as String: "Fixture",
+             kCGWindowName as String: "managed-item",
+             kCGWindowBounds as String: ["X": 980, "Y": 0, "Width": 30, "Height": 30]],
+            [kCGWindowLayer as String: 25,
+             kCGWindowNumber as String: 3_800_000_002,
+             kCGWindowOwnerPID as String: -1,
+             kCGWindowOwnerName as String: "Fixture",
+             kCGWindowName as String: "retained-item",
+             kCGWindowBounds as String: ["X": 1_020, "Y": 0, "Width": 30, "Height": 30]]
+        ]
+        let policy = MenuBarPlatformPolicy(
+            discovery: .windowServerOnly,
+            movement: .nativeOverflow,
+            usesHiddenSection: true
+        )
+        let scanner = MenuBarScanner(
+            readWindows: { windows },
+            readDisplayBounds: { [CGRect(x: 0, y: 0, width: 1_512, height: 982)] },
+            ownBundleIdentifier: "com.bartuck.tests",
+            platformPolicy: policy
+        )
+        let seeds = scanner.scan(selectedIDs: [])
+        let managedSeed = seeds.first { $0.title == "managed-item" }!
+        let retainedSeed = seeds.first { $0.title == "retained-item" }!
+        preferences.saveRule(.alwaysHidden, for: managedSeed.id)
+        preferences.saveRule(.alwaysVisible, for: retainedSeed.id)
+
+        var applyCalls = 0
+        var restoreCalls = 0
+        var appliedManagedIDs = [String]()
+        var appliedRetainedIDs = [String]()
+        var restoredIDs = [String]()
+        var operationStates = [Bool]()
+        let store = MenuBarItemStore(
+            permissions: permissions,
+            preferences: preferences,
+            language: language,
+            scanner: scanner,
+            captureOverride: { items in
+                Dictionary(uniqueKeysWithValues: items.map {
+                    ($0.id, NSImage(size: NSSize(width: 24, height: 24)))
+                })
+            },
+            platformPolicy: policy,
+            nativeOverflowApplyOverride: { managed, retained, completion in
+                applyCalls += 1
+                appliedManagedIDs = managed.map(\.id)
+                appliedRetainedIDs = retained.map(\.id)
+                completion(.init(succeeded: true, movedCount: managed.count,
+                                 rollbackSucceeded: true, wasNoOp: false))
+            },
+            nativeOverflowRestoreOverride: { items, completion in
+                restoreCalls += 1
+                restoredIDs = items.map(\.id)
+                completion(.init(succeeded: true, movedCount: items.count,
+                                 rollbackSucceeded: true, wasNoOp: false))
+            }
+        )
+        store.onLayoutOperationStateChanged = { operationStates.append($0) }
+        store.refresh()
+        guard await waitUntil({
+            store.selectedItems.count == 1 && store.isReadyForManagedLayout
+        }) else {
+            throw NSError(domain: "RefreshIsolation", code: 63,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "The native-overflow fixture did not become ready."])
+        }
+
+        store.applyLayout()
+        guard await waitUntil({
+            applyCalls == 1 && store.isHiddenSectionActive &&
+                store.overflowItems.map(\.id) == [managedSeed.id]
+        }) else {
+            throw NSError(domain: "RefreshIsolation", code: 64,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "A successful native-overflow transaction did not publish the hidden state."])
+        }
+        guard appliedManagedIDs == [managedSeed.id],
+              appliedRetainedIDs == [retainedSeed.id],
+              operationStates == [true, false] else {
+            throw NSError(domain: "RefreshIsolation", code: 65,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "The native-overflow transaction received the wrong partition or operation state."])
+        }
+
+        for _ in 0..<12 { store.refresh(source: .externalChange) }
+        try await Task.sleep(for: .milliseconds(400))
+        guard applyCalls == 1,
+              store.isHiddenSectionActive,
+              store.overflowItems.map(\.id) == [managedSeed.id] else {
+            throw NSError(domain: "RefreshIsolation", code: 66,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "A read-only refresh retriggered or discarded native overflow."])
+        }
+
+        store.applyLayout()
+        try await Task.sleep(for: .milliseconds(250))
+        guard applyCalls == 1, operationStates == [true, false] else {
+            throw NSError(domain: "RefreshIsolation", code: 67,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "An already-correct native-overflow layout was moved again."])
+        }
+
+        store.setLayoutManagementEnabled(false)
+        guard await waitUntil({ restoreCalls == 1 && !store.isHiddenSectionActive }) else {
+            throw NSError(domain: "RefreshIsolation", code: 68,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Disabling native overflow did not restore the original order."])
+        }
+        guard Set(restoredIDs) == Set([managedSeed.id, retainedSeed.id]),
+              store.overflowItems.isEmpty,
+              operationStates == [true, false, true, false] else {
+            throw NSError(domain: "RefreshIsolation", code: 69,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Native-overflow restore left hidden state or skipped an item."])
+        }
+    }
+
     private static func directMaskedActivationKeepsNativeSlotCovered() async throws {
         let domain = "DirectMaskedActivationTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: domain)!
@@ -387,7 +835,11 @@ enum RefreshIsolationTests {
                     ($0.id, NSImage(size: NSSize(width: 24, height: 24)))
                 })
             },
-            platformPolicy: MenuBarPlatformPolicy(majorVersion: 27),
+            platformPolicy: MenuBarPlatformPolicy(
+                discovery: .accessibilityPreferred,
+                movement: .maskOverlay,
+                usesHiddenSection: false
+            ),
             maskingController: maskingController,
             activator: activator
         )
@@ -486,7 +938,11 @@ enum RefreshIsolationTests {
                     ($0.id, NSImage(size: NSSize(width: 24, height: 24)))
                 })
             },
-            platformPolicy: MenuBarPlatformPolicy(majorVersion: 27),
+            platformPolicy: MenuBarPlatformPolicy(
+                discovery: .accessibilityPreferred,
+                movement: .maskOverlay,
+                usesHiddenSection: false
+            ),
             maskingController: maskingController
         )
 
@@ -592,7 +1048,11 @@ enum RefreshIsolationTests {
                     ($0.id, NSImage(size: NSSize(width: 24, height: 24)))
                 })
             },
-            platformPolicy: MenuBarPlatformPolicy(majorVersion: 27),
+            platformPolicy: MenuBarPlatformPolicy(
+                discovery: .accessibilityPreferred,
+                movement: .maskOverlay,
+                usesHiddenSection: false
+            ),
             maskingController: maskingController
         )
 
@@ -849,7 +1309,11 @@ enum RefreshIsolationTests {
                     ($0.id, NSImage(size: NSSize(width: 24, height: 24)))
                 })
             },
-            platformPolicy: MenuBarPlatformPolicy(majorVersion: 27),
+            platformPolicy: MenuBarPlatformPolicy(
+                discovery: .accessibilityPreferred,
+                movement: .maskOverlay,
+                usesHiddenSection: false
+            ),
             maskingController: maskingController
         )
 

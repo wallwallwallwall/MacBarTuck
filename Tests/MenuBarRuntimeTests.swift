@@ -33,6 +33,7 @@ private enum MenuBarRuntimeTests {
         try expect(scanner.windowSignature().count == 1,
                    "Published owned IDs must not trigger rescans.")
         try separatorStates()
+        try nativeOverflowPlanning()
         try interactionPolicy()
         try platformPolicies()
         try displayBoundsResolution()
@@ -56,6 +57,166 @@ private enum MenuBarRuntimeTests {
         try expect(length() == 3840, "Collapse must cover the widest attached screen.")
         try expect(length(widths: [8000]) == 10000, "Collapse must respect the status-item size limit.")
         try expect(length(widths: [.nan, .infinity, -10]) == 3456, "Invalid display widths must be ignored.")
+
+        let dualDisplayPlan = StatusItemLayoutPolicy.nativeOverflowSpacerPlan(
+            screenWidths: [1512, 1920],
+            statusRegionWidths: [631.5, 960]
+        )
+        try expect(
+            dualDisplayPlan == NativeOverflowSpacerPlan(itemLength: 680, itemCount: 2),
+            "macOS 27 must use two sub-half-screen spacers for the verified 1512/1920 dual-display layout."
+        )
+        try expect(
+            dualDisplayPlan.totalLength == 1360,
+            "The verified dual-display spacer plan must provide 1360 points of native overflow pressure."
+        )
+        try expect(
+            StatusItemLayoutPolicy.nativeOverflowSpacerPresentation(
+                isApplyingLayout: true,
+                length: StatusItemLayoutPolicy.compactSeparatorLength
+            ) == NativeOverflowSpacerPresentation(
+                alphaValue: 0,
+                isEnabled: true,
+                appearsDisabled: false
+            ),
+            "A compact native-overflow spacer must stay transparent but accept layout drops."
+        )
+        try expect(
+            StatusItemLayoutPolicy.nativeOverflowSpacerPresentation(
+                isApplyingLayout: false,
+                length: dualDisplayPlan.itemLength
+            ) == NativeOverflowSpacerPresentation(
+                alphaValue: 0,
+                isEnabled: false,
+                appearsDisabled: true
+            ),
+            "An expanded native-overflow spacer must be transparent and non-interactive."
+        )
+        try expect(
+            StatusItemLayoutPolicy.nativeOverflowSpacerPresentation(
+                isApplyingLayout: false,
+                length: 0
+            ) == NativeOverflowSpacerPresentation(
+                alphaValue: 0,
+                isEnabled: false,
+                appearsDisabled: true
+            ),
+            "A withdrawn native-overflow spacer must not leave an interactive empty slot."
+        )
+        try expect(
+            StatusItemLayoutPolicy.statusRegionWidth(
+                screenWidth: 1512,
+                auxiliaryTopRightWidth: 631.5
+            ) == 631.5,
+            "A notched display must use its real top-right status region."
+        )
+        try expect(
+            StatusItemLayoutPolicy.statusRegionWidth(
+                screenWidth: 1920,
+                auxiliaryTopRightWidth: nil
+            ) == 960,
+            "A display without a notch must reserve the right half for status items."
+        )
+    }
+
+    private static func nativeOverflowPlanning() throws {
+        let current = [
+            "item|managed-a", "item|retained-a", "item|managed-b",
+            "spacer|0", "spacer|1", "control"
+        ]
+        let desired = [
+            "item|managed-a", "item|managed-b", "spacer|0", "spacer|1",
+            "item|retained-a", "control"
+        ]
+        let moves = NativeOverflowLayoutPolicy.movePlan(
+            currentOrder: current,
+            desiredOrder: desired
+        )
+        try expect(
+            NativeOverflowLayoutPolicy.applying(moves, to: current) == desired,
+            "The native-overflow plan must group managed items left of both spacers and retained items to their right."
+        )
+        try expect(
+            Set(moves.map(\.sourceID)).count == moves.count,
+            "A native-overflow transaction must move each source at most once."
+        )
+        try expect(
+            NativeOverflowLayoutPolicy.movePlan(
+                currentOrder: desired,
+                desiredOrder: desired
+            ).isEmpty,
+            "An already-correct native-overflow topology must perform zero moves."
+        )
+
+        let completedBeforeFailure = Array(moves.prefix(2))
+        guard let partialOrder = NativeOverflowLayoutPolicy.applying(
+            completedBeforeFailure,
+            to: current
+        ) else {
+            throw TestFailure(description: "The failure fixture could not apply its completed moves.")
+        }
+        let rollback = NativeOverflowLayoutPolicy.movePlan(
+            currentOrder: partialOrder,
+            desiredOrder: current
+        )
+        try expect(
+            NativeOverflowLayoutPolicy.applying(rollback, to: partialOrder) == current,
+            "A failed native-overflow transaction must have a deterministic rollback to its starting order."
+        )
+
+        let source = CGRect(x: 100, y: 0, width: 24, height: 24)
+        let adjacentTarget = CGRect(x: 124, y: 0, width: 30, height: 24)
+        let displacedTarget = CGRect(x: 160, y: 0, width: 30, height: 24)
+        let firstMatch = NativeOverflowMoveVerificationPolicy.decision(
+            source: source,
+            target: adjacentTarget,
+            check: 0,
+            consecutiveMatches: 0
+        )
+        try expect(
+            firstMatch == .retry(nextCheck: 1, consecutiveMatches: 1),
+            "One transient adjacent sample must not complete a native menu-bar move."
+        )
+        let stableMatch = NativeOverflowMoveVerificationPolicy.decision(
+            source: source,
+            target: adjacentTarget,
+            check: 1,
+            consecutiveMatches: 1
+        )
+        try expect(
+            stableMatch == .succeeded,
+            "Two consecutive adjacent samples must complete a native menu-bar move."
+        )
+        let resetAfterMismatch = NativeOverflowMoveVerificationPolicy.decision(
+            source: source,
+            target: displacedTarget,
+            check: 1,
+            consecutiveMatches: 1
+        )
+        try expect(
+            resetAfterMismatch == .retry(nextCheck: 2, consecutiveMatches: 0),
+            "A transient mismatch must reset native move stability instead of triggering rollback."
+        )
+        let missingFrameRetry = NativeOverflowMoveVerificationPolicy.decision(
+            source: nil,
+            target: adjacentTarget,
+            check: 0,
+            consecutiveMatches: 0
+        )
+        try expect(
+            missingFrameRetry == .retry(nextCheck: 1, consecutiveMatches: 0),
+            "A temporarily stale AX element must be retried within the bounded verification window."
+        )
+        let finalMismatch = NativeOverflowMoveVerificationPolicy.decision(
+            source: source,
+            target: displacedTarget,
+            check: NativeOverflowMoveVerificationPolicy.maximumChecks - 1,
+            consecutiveMatches: 0
+        )
+        try expect(
+            finalMismatch == .failed,
+            "Native move verification must fail after its bounded retry budget is exhausted."
+        )
     }
 
     private static func interactionPolicy() throws {
@@ -162,8 +323,10 @@ private enum MenuBarRuntimeTests {
                                    movement: .windowServer, usesHiddenSection: true),
                    "macOS 26 must retain the verified Control Center-hosted WindowServer path.")
         try expect(macOS27 == .init(discovery: .accessibilityPreferred,
-                                   movement: .maskOverlay, usesHiddenSection: false),
-                   "macOS 27 must conceal items in place without moving the composite menu bar.")
+                                   movement: .assessmentMode, usesHiddenSection: false),
+                   "macOS 27 must use assessment mode without reserving a hidden status-item slot.")
+        try expect(StatusItemLayoutPolicy.hiddenSectionItemCount(usesHiddenSection: false) == 0,
+                   "A platform without a hidden section must create no invisible status item.")
         try expect(macOS27.accessibilityMenuBarAttributeNames == ["AXExtrasMenuBar", "AXMenuBar"],
                    "macOS 27 must read status items from AXExtrasMenuBar before the application menu bar.")
         try expect(macOS15.usesWindowServerAccessibilitySeeds,
@@ -173,7 +336,7 @@ private enum MenuBarRuntimeTests {
         try expect(future == macOS27,
                    "Later releases must default to the safer macOS 27 accessibility strategy.")
         try expect(MenuBarMaskLayoutPolicy.liveGeometrySyncInterval == 0.25,
-                   "Live masks must follow dynamic status items within a quarter second.")
+                   "The legacy mask policy must retain its bounded geometry interval for compatibility tests.")
     }
 
     private static func displayBoundsResolution() throws {

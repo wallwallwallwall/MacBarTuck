@@ -21,6 +21,25 @@ enum MenuBarGeometry {
         CGRect(x: frame.minX, y: primaryScreenHeight - frame.maxY, width: frame.width, height: frame.height)
     }
 
+    static func quartzFrame(fromAppKit frame: CGRect, primaryScreenHeight: CGFloat) -> CGRect {
+        CGRect(x: frame.minX, y: primaryScreenHeight - frame.maxY, width: frame.width, height: frame.height)
+    }
+
+    static func coordinateDragPath(
+        from start: CGPoint,
+        to end: CGPoint,
+        steps: Int
+    ) -> [CGPoint] {
+        guard steps > 0 else { return [] }
+        return (1...steps).map { step in
+            let progress = CGFloat(step) / CGFloat(steps)
+            return CGPoint(
+                x: start.x + (end.x - start.x) * progress,
+                y: start.y + (end.y - start.y) * progress
+            )
+        }
+    }
+
     static func isVisibleMenuBarItem(
         _ frame: CGRect,
         displayBounds: [CGRect]

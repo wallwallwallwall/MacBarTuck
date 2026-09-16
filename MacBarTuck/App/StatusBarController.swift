@@ -4,23 +4,25 @@ import OSLog
 @MainActor
 final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
-    private let hiddenSectionItem: NSStatusItem
+    private var hiddenSectionItems: [NSStatusItem]
     private let store: MenuBarItemStore
     private let panelController: OverflowPanelController
     private let menuProvider: () -> NSMenu
     private let language: AppLanguageController
+    private let platformPolicy: MenuBarPlatformPolicy
     private var isShowingContextMenu = false
     private let logger = Logger(subsystem: "com.bartuck.app", category: "status")
     private var hoverMonitor: Any?
     private var pointerIsAtMenuBar = false
     private var hoverRevealSuppressedUntilPointerLeaves = false
     private var hiddenSectionReflowWorkItem: DispatchWorkItem?
-    private var requestedHiddenSectionLength: CGFloat?
+    private var requestedHiddenSectionLengths: [CGFloat]?
     private var isApplyingLayout = false
     private var isTerminating = false
 
     init(store: MenuBarItemStore, language: AppLanguageController = .shared,
          menuProvider: @escaping () -> NSMenu) {
+        let platformPolicy = MenuBarPlatformPolicy.current
         let defaults = UserDefaults.standard
         let hoverMigrationKey = "didDisableHoverRevealByDefaultV1"
         if defaults.object(forKey: hoverMigrationKey) == nil {
@@ -29,27 +31,35 @@ final class StatusBarController: NSObject {
         }
         // Keep the legacy autosave names so upgrades retain menu bar positions.
         let arrowName = "BarTuckControlItem"
-        let hiddenName = "BarTuckHiddenSection"
         // Keep the registration sequence used by the working 1.0.17 build.
         // macOS 26 creates the Control Center host during statusItem(withLength:);
         // registering a second item before the first host is attached makes
         // the whole client enter Control Center's blocked list.
         defaults.set(0.0, forKey: "NSStatusItem Preferred Position \(arrowName)")
-        defaults.set(1.0, forKey: "NSStatusItem Preferred Position \(hiddenName)")
         defaults.set(true, forKey: "NSStatusItem Visible \(arrowName)")
-        defaults.set(true, forKey: "NSStatusItem Visible \(hiddenName)")
+        defaults.set(true, forKey: "NSStatusItem VisibleCC \(arrowName)")
         let visibleLength = max(NSStatusBar.system.thickness, 18)
-        let hiddenLength: CGFloat = MenuBarPlatformPolicy.current.usesHiddenSection ? 20 : 0
+        let hiddenCount = Self.hiddenSectionItemCount(for: platformPolicy)
+        let hiddenLength: CGFloat = platformPolicy.usesHiddenSection
+            ? StatusItemLayoutPolicy.compactSeparatorLength
+            : 0
         statusItem = NSStatusBar.system.statusItem(withLength: visibleLength)
         statusItem.autosaveName = arrowName
-        hiddenSectionItem = NSStatusBar.system.statusItem(withLength: hiddenLength)
-        hiddenSectionItem.autosaveName = hiddenName
+        hiddenSectionItems = (0..<hiddenCount).map {
+            Self.makeHiddenSectionItem(
+                index: $0,
+                length: hiddenLength,
+                defaults: defaults
+            )
+        }
         self.store = store
         self.language = language
         self.menuProvider = menuProvider
+        self.platformPolicy = platformPolicy
         panelController = OverflowPanelController(store: store, language: language)
         super.init()
-        configureHiddenSectionItem()
+        hiddenSectionItems.forEach(configureHiddenSectionItem)
+        publishStatusItemFrameProviders()
         store.onImagesReady = { [weak self] in
             guard let self else { return }
             self.updateHiddenSectionLength()
@@ -71,10 +81,10 @@ final class StatusBarController: NSObject {
         let button = statusItem.button
         statusItem.length = visibleLength
         statusItem.isVisible = true
-        if MenuBarPlatformPolicy.current.usesHiddenSection {
-            hiddenSectionItem.isVisible = true
+        if platformPolicy.usesHiddenSection {
+            hiddenSectionItems.forEach { $0.isVisible = true }
         } else {
-            withdrawHiddenSectionItem()
+            hiddenSectionItems.forEach(withdrawHiddenSectionItem)
         }
         button?.image = Self.statusBarImage(language: language)
         button?.imagePosition = .imageOnly
@@ -125,12 +135,14 @@ final class StatusBarController: NSObject {
     }
 
     private var statusHostsReady = false
-    private func configureHiddenSectionItem() {
-        hiddenSectionItem.button?.image = nil
-        hiddenSectionItem.button?.title = ""
-        // Control Center rejects Command-drag drops into a disabled hosted
-        // status item, even though the WindowServer target still exists.
-        hiddenSectionItem.button?.cell?.isEnabled = true
+    private func configureHiddenSectionItem(_ item: NSStatusItem) {
+        item.button?.image = nil
+        item.button?.title = ""
+        applyHiddenSectionPresentation(
+            to: item,
+            length: item.length,
+            isApplyingLayout: false
+        )
     }
 
     deinit {
@@ -165,9 +177,20 @@ final class StatusBarController: NSObject {
         isTerminating = true
         hiddenSectionReflowWorkItem?.cancel()
         hiddenSectionReflowWorkItem = nil
-        requestedHiddenSectionLength = 0
-        hiddenSectionItem.length = 0
-        withdrawHiddenSectionItem()
+        let terminalLength = platformPolicy.usesHiddenSection
+            ? StatusItemLayoutPolicy.compactSeparatorLength
+            : 0
+        requestedHiddenSectionLengths = hiddenSectionItems.map { _ in terminalLength }
+        for item in hiddenSectionItems {
+            applyHiddenSectionPresentation(
+                to: item,
+                length: terminalLength,
+                isApplyingLayout: false
+            )
+            item.length = terminalLength
+            item.isVisible = terminalLength > 0
+        }
+        publishStatusItemWindowIDs()
     }
 
     @objc private func togglePanel() {
@@ -205,19 +228,19 @@ final class StatusBarController: NSObject {
 
     private func publishStatusItemWindowIDs() {
         let controlWindowID = statusWindowID(for: statusItem)
-        let hiddenWindowID = statusWindowID(for: hiddenSectionItem)
-        logger.info("Published status item windows control=\(controlWindowID ?? 0, privacy: .public) hidden=\(hiddenWindowID ?? 0, privacy: .public)")
+        let hiddenWindowIDs = hiddenSectionItems.compactMap(statusWindowID)
+        logger.info("Published status item windows control=\(controlWindowID ?? 0, privacy: .public) hiddenCount=\(hiddenWindowIDs.count, privacy: .public)")
         if let button = statusItem.button {
             let appKitFrame = button.window.map { $0.convertToScreen(button.convert(button.bounds, to: nil)) } ?? .zero
             let axFrame = button.accessibilityFrame()
             logger.info("Status item diagnostics visible=\(self.statusItem.isVisible, privacy: .public) length=\(self.statusItem.length, privacy: .public) hidden=\(button.isHidden, privacy: .public) alpha=\(button.alphaValue, privacy: .public) buttonFrame=\(String(describing: button.frame), privacy: .public) window=\(button.window?.windowNumber ?? 0, privacy: .public) windowFrame=\(String(describing: button.window?.frame ?? .zero), privacy: .public) windowVisible=\(button.window?.isVisible ?? false, privacy: .public) appKitFrame=\(String(describing: appKitFrame), privacy: .public) axFrame=\(String(describing: axFrame), privacy: .public) image=\(button.image != nil, privacy: .public)")
         }
-        store.updateStatusItemWindowIDs(control: controlWindowID, hidden: hiddenWindowID)
+        store.updateStatusItemWindowIDs(control: controlWindowID, hidden: hiddenWindowIDs)
+        publishStatusItemFrameProviders()
     }
 
     private func statusWindowID(for item: NSStatusItem) -> CGWindowID? {
-        let hidden = item === hiddenSectionItem
-        let exactTitle = hidden ? "BarTuckHiddenSection" : "BarTuckControlItem"
+        let exactTitle = item.autosaveName ?? ""
         let windows = MenuBarWindowServer.windowInfo()
         if let exact = windows.compactMap({ info -> (id: CGWindowID, width: CGFloat)? in
             guard MenuBarWindowServer.isStatusItemLayer(info),
@@ -239,36 +262,41 @@ final class StatusBarController: NSObject {
 
     private func updateHiddenSectionLength() {
         guard !isTerminating else { return }
-        if !MenuBarPlatformPolicy.current.usesHiddenSection {
-            hiddenSectionItem.length = 0
-            withdrawHiddenSectionItem()
-            requestedHiddenSectionLength = 0
+        reconcileHiddenSectionItemCount()
+        if !platformPolicy.usesHiddenSection {
+            for item in hiddenSectionItems {
+                item.length = 0
+                withdrawHiddenSectionItem(item)
+            }
+            requestedHiddenSectionLengths = hiddenSectionItems.map { _ in 0 }
             return
         }
-        let desiredLength = StatusItemLayoutPolicy.separatorLength(
-            enabled: store.layoutManagementEnabled,
-            ready: store.isHiddenSectionActive,
-            hasSelection: store.isHiddenSectionActive,
-            isApplying: isApplyingLayout,
-            screenWidths: NSScreen.screens.map { $0.frame.width }
-        )
+        let desiredLengths = desiredHiddenSectionLengths()
         guard statusHostsReady else { return }
-        let item = hiddenSectionItem
-        guard requestedHiddenSectionLength != desiredLength else { return }
-        DiagnosticLog.shared.record("separator.resize", ["width": Int(desiredLength), "arranging": isApplyingLayout ? 1 : 0])
-        requestedHiddenSectionLength = desiredLength
+        guard requestedHiddenSectionLengths != desiredLengths else { return }
+        DiagnosticLog.shared.record("separator.resize", [
+            "width": Int(desiredLengths.reduce(0, +)),
+            "count": desiredLengths.filter { $0 > 0 }.count,
+            "arranging": isApplyingLayout ? 1 : 0,
+            "interactive": isApplyingLayout ? desiredLengths.filter { $0 > 0 }.count : 0
+        ])
+        requestedHiddenSectionLengths = desiredLengths
         hiddenSectionReflowWorkItem?.cancel()
 
-        if desiredLength == 0 {
-            item.length = 0
-            withdrawHiddenSectionItem()
-            publishStatusItemWindowIDs()
-            return
+        for (item, desiredLength) in zip(hiddenSectionItems, desiredLengths) {
+            applyHiddenSectionPresentation(
+                to: item,
+                length: desiredLength,
+                isApplyingLayout: isApplyingLayout
+            )
+            if desiredLength == 0 {
+                item.length = 0
+                withdrawHiddenSectionItem(item)
+                continue
+            }
+            item.length = desiredLength
+            item.isVisible = true
         }
-
-        item.button?.cell?.isEnabled = true
-        item.length = desiredLength
-        item.isVisible = true
         let work = DispatchWorkItem { [weak self] in
             self?.hiddenSectionReflowWorkItem = nil
             self?.publishStatusItemWindowIDs()
@@ -277,12 +305,154 @@ final class StatusBarController: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
     }
 
-    private func withdrawHiddenSectionItem() {
-        let key = "NSStatusItem Preferred Position \(hiddenSectionItem.autosaveName ?? "")"
+    private func desiredHiddenSectionLengths() -> [CGFloat] {
+        if platformPolicy.movement == .nativeOverflow {
+            let plan = Self.nativeOverflowSpacerPlan()
+            let length: CGFloat
+            if isApplyingLayout {
+                length = StatusItemLayoutPolicy.compactSeparatorLength
+            } else if store.layoutManagementEnabled && store.isHiddenSectionActive {
+                length = plan.itemLength
+            } else {
+                length = 0
+            }
+            return Array(repeating: length, count: hiddenSectionItems.count)
+        }
+        let length = StatusItemLayoutPolicy.separatorLength(
+            enabled: store.layoutManagementEnabled,
+            ready: store.isHiddenSectionActive,
+            hasSelection: store.isHiddenSectionActive,
+            isApplying: isApplyingLayout,
+            screenWidths: NSScreen.screens.map { $0.frame.width }
+        )
+        return [length]
+    }
+
+    private func reconcileHiddenSectionItemCount() {
+        guard platformPolicy.movement == .nativeOverflow else { return }
+        let desiredCount = Self.nativeOverflowSpacerPlan().itemCount
+        guard desiredCount != hiddenSectionItems.count else { return }
+        if desiredCount < hiddenSectionItems.count {
+            for item in hiddenSectionItems.dropFirst(desiredCount) {
+                NSStatusBar.system.removeStatusItem(item)
+            }
+            hiddenSectionItems.removeLast(hiddenSectionItems.count - desiredCount)
+        } else {
+            let defaults = UserDefaults.standard
+            for index in hiddenSectionItems.count..<desiredCount {
+                let item = Self.makeHiddenSectionItem(
+                    index: index,
+                    length: StatusItemLayoutPolicy.compactSeparatorLength,
+                    defaults: defaults
+                )
+                configureHiddenSectionItem(item)
+                hiddenSectionItems.append(item)
+            }
+        }
+        requestedHiddenSectionLengths = nil
+        publishStatusItemFrameProviders()
+    }
+
+    private func publishStatusItemFrameProviders() {
+        let hiddenProviders: [() -> CGRect?] = hiddenSectionItems.indices.map { index in
+            { [weak self] in
+                guard let self, self.hiddenSectionItems.indices.contains(index) else { return nil }
+                return self.quartzFrame(for: self.hiddenSectionItems[index])
+            }
+        }
+        store.updateStatusItemFrameProviders(
+            control: { [weak self] in
+                guard let self else { return nil }
+                return self.quartzFrame(for: self.statusItem)
+            },
+            hidden: hiddenProviders
+        )
+    }
+
+    private func quartzFrame(for item: NSStatusItem) -> CGRect? {
+        guard item.isVisible,
+              item.length > 0,
+              let button = item.button,
+              let primaryHeight = NSScreen.screens.first?.frame.maxY else { return nil }
+        let frame = button.accessibilityFrame()
+        guard frame.width > 1, frame.height > 1 else { return nil }
+        return MenuBarGeometry.quartzFrame(
+            fromAppKit: frame,
+            primaryScreenHeight: primaryHeight
+        )
+    }
+
+    private func withdrawHiddenSectionItem(_ item: NSStatusItem) {
+        let key = "NSStatusItem Preferred Position \(item.autosaveName ?? "")"
         let position = UserDefaults.standard.object(forKey: key)
-        hiddenSectionItem.isVisible = false
+        item.isVisible = false
         if let position { UserDefaults.standard.set(position, forKey: key) }
-        hiddenSectionItem.button?.cell?.isEnabled = false
+        item.button?.isEnabled = false
+        item.button?.cell?.isEnabled = false
+    }
+
+    private func applyHiddenSectionPresentation(
+        to item: NSStatusItem,
+        length: CGFloat,
+        isApplyingLayout: Bool
+    ) {
+        guard platformPolicy.movement == .nativeOverflow else {
+            let enabled = length > 0
+            item.button?.alphaValue = 1
+            item.button?.isEnabled = enabled
+            item.button?.cell?.isEnabled = enabled
+            item.button?.appearsDisabled = false
+            return
+        }
+        let presentation = StatusItemLayoutPolicy.nativeOverflowSpacerPresentation(
+            isApplyingLayout: isApplyingLayout,
+            length: length
+        )
+        item.button?.alphaValue = presentation.alphaValue
+        item.button?.isEnabled = presentation.isEnabled
+        item.button?.cell?.isEnabled = presentation.isEnabled
+        item.button?.appearsDisabled = presentation.appearsDisabled
+    }
+
+    private static func hiddenSectionItemCount(
+        for policy: MenuBarPlatformPolicy
+    ) -> Int {
+        guard policy.usesHiddenSection else {
+            return StatusItemLayoutPolicy.hiddenSectionItemCount(usesHiddenSection: false)
+        }
+        return policy.movement == .nativeOverflow
+            ? nativeOverflowSpacerPlan().itemCount
+            : StatusItemLayoutPolicy.hiddenSectionItemCount(usesHiddenSection: true)
+    }
+
+    private static func nativeOverflowSpacerPlan() -> NativeOverflowSpacerPlan {
+        StatusItemLayoutPolicy.nativeOverflowSpacerPlan(
+            screenWidths: NSScreen.screens.map { $0.frame.width },
+            statusRegionWidths: NSScreen.screens.map {
+                StatusItemLayoutPolicy.statusRegionWidth(
+                    screenWidth: $0.frame.width,
+                    auxiliaryTopRightWidth: $0.auxiliaryTopRightArea?.width
+                )
+            }
+        )
+    }
+
+    private static func hiddenSectionName(index: Int) -> String {
+        index == 0 ? "BarTuckHiddenSection" : "BarTuckHiddenSection\(index + 1)"
+    }
+
+    private static func makeHiddenSectionItem(
+        index: Int,
+        length: CGFloat,
+        defaults: UserDefaults
+    ) -> NSStatusItem {
+        let name = hiddenSectionName(index: index)
+        defaults.set(Double(index + 1), forKey: "NSStatusItem Preferred Position \(name)")
+        defaults.set(true, forKey: "NSStatusItem Visible \(name)")
+        defaults.set(true, forKey: "NSStatusItem VisibleCC \(name)")
+        let item = NSStatusBar.system.statusItem(withLength: length)
+        item.autosaveName = name
+        return item
     }
 
     private var hoverRevealEnabled: Bool {

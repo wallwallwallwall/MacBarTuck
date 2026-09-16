@@ -1,6 +1,6 @@
 # 开源参考
 
-核验日期：2026-09-15。读取 Apple Developer、GitHub API、上游 README、源码和许可证；未安装或运行这些参考软件。上游宣称支持不等于 MacBarTuck 已验证支持。
+核验日期：2026-09-16。读取 Apple Developer、GitHub API、上游 README、源码和许可证；未安装或运行这些参考软件。上游宣称支持不等于 MacBarTuck 已验证支持。
 
 ## 平台依据
 
@@ -15,7 +15,7 @@
 ## 仅参考功能设计
 
 - [Ice](https://github.com/jordanbaird/Ice)：GPL-3.0，核验时最近推送为 2025-09-20。参考独立托盘、项目搜索、快捷键和自动收起的交互，不复制 GPL 源码或素材进 MIT 工程。
-- [Thaw](https://github.com/thaw-app/Thaw)：GPL-3.0，核验时最近推送为 2026-09-14。参考配置备份、显示器场景和问题诊断。0.1.11 核对了其固定提交 `0d23b56f` 中的 [应用图标回退](https://github.com/thaw-app/Thaw/blob/0d23b56fdb9d827a2d9942159ce54f1c900c26a4/Thaw/MenuBar/IceBar/MenuBarItemIconFallback.swift) 与 [0.82 高度比例](https://github.com/thaw-app/Thaw/blob/0d23b56fdb9d827a2d9942159ce54f1c900c26a4/Thaw/MenuBar/IceBar/IceBar.swift)；0.1.16 又核对提交 `934b58434a1b53c9170f7f8215479415ca5ecedc` 的 `AXHelpers.extrasMenuBar` 使用方式，确认成熟项目同样从应用的额外菜单栏读取状态项。MacBarTuck 只参考这一系统接口选择，使用现有 AppKit 代码独立实现，不复制 GPL 源码。其 [FAQ](https://github.com/thaw-app/Thaw/blob/development/FREQUENT_ISSUES.md) 记录多屏切换、动态菜单项身份、闪烁和权限等现实边界，因此不照搬上游兼容性承诺。
+- [Thaw](https://github.com/thaw-app/Thaw)：GPL-3.0，2026-09-16 核对 development 提交 `dacd6563f5307a9e4c8aa397aeb20cec420e1012`。参考配置备份、显示器场景和问题诊断。0.1.11 核对了其固定提交 `0d23b56f` 中的 [应用图标回退](https://github.com/thaw-app/Thaw/blob/0d23b56fdb9d827a2d9942159ce54f1c900c26a4/Thaw/MenuBar/IceBar/MenuBarItemIconFallback.swift) 与 [0.82 高度比例](https://github.com/thaw-app/Thaw/blob/0d23b56fdb9d827a2d9942159ce54f1c900c26a4/Thaw/MenuBar/IceBar/IceBar.swift)；0.1.16 核对 `AXExtrasMenuBar` 发现路径；0.1.19 曾参考其 [ControlItem](https://github.com/thaw-app/Thaw/blob/dacd6563f5307a9e4c8aa397aeb20cec420e1012/Thaw/MenuBar/ControlItem/ControlItem.swift) 验证原生分隔项方案，但实机证明透明状态项仍会留下空槽，0.1.20 已不再使用该路径。其 [FAQ](https://github.com/thaw-app/Thaw/blob/development/FREQUENT_ISSUES.md) 记录多屏切换、动态菜单项身份、闪烁和权限等现实边界，因此不照搬上游兼容性承诺，也不复制 GPL 源码或素材。
 
 ## 扩展顺序
 

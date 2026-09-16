@@ -203,7 +203,7 @@ final class MenuBarItemActivator: MenuBarItemActivating {
         if let element = item.axElement, let frame = currentAXFrame(for: element) {
             item.frame = frame
         }
-        if [MenuBarMovementStrategy.accessibility, .maskOverlay]
+        if [MenuBarMovementStrategy.accessibility, .maskOverlay, .nativeOverflow]
             .contains(MenuBarPlatformPolicy.current.movement),
            isValidMenuBarPoint(CGPoint(x: item.frame.midX, y: item.frame.midY)) {
             // A composite macOS 27 host may not publish a small layer-25

@@ -55,6 +55,15 @@ swiftc \
 
 swiftc \
     -parse-as-library \
+    "$ROOT/MacBarTuck/Core/MenuBarAssessmentModePolicy.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarAssessmentModeController.swift" \
+    "$ROOT/Tests/MenuBarAssessmentModeTests.swift" \
+    -o "$BUILD_DIR/MenuBarAssessmentModeTests"
+
+"$BUILD_DIR/MenuBarAssessmentModeTests"
+
+swiftc \
+    -parse-as-library \
     "${SOURCES[@]}" \
     "$ROOT/MacBarTuck/Models/MenuBarItem.swift" \
     "$ROOT/MacBarTuck/Services/MenuBarMaskSnapshotRenderer.swift" \

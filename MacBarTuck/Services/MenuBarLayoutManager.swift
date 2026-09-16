@@ -1,23 +1,45 @@
 import AppKit
 import ApplicationServices
-import CoreGraphics
+@preconcurrency import CoreGraphics
 import OSLog
+
+struct NativeOverflowTransactionResult {
+    let succeeded: Bool
+    let movedCount: Int
+    let rollbackSucceeded: Bool
+    let wasNoOp: Bool
+}
 
 /// Moves status-item windows by sending WindowServer-targeted Command-drag events.
 /// The synthetic drag temporarily updates the system pointer, then restores it
 /// to the real pre-operation location captured before the move.
+@MainActor
 final class MenuBarLayoutManager {
     private enum Placement { case left, right }
+    private struct NativeOverflowNode {
+        let id: String
+        let frame: () -> CGRect?
+    }
+
     private let logger = Logger(subsystem: "com.bartuck.app", category: "layout")
     private let preferences: PreferencesStore
+    private let platformPolicy: MenuBarPlatformPolicy
     private let initialWindowIDs: Set<CGWindowID>
     private var controlStatusItemWindowID: CGWindowID?
-    private var hiddenStatusItemWindowID: CGWindowID?
+    private var hiddenStatusItemWindowIDs = [CGWindowID]()
+    private var controlStatusItemFrameProvider: (() -> CGRect?)?
+    private var hiddenStatusItemFrameProviders = [() -> CGRect?]()
+    private var accessibilityElementRefresher: ((MenuBarItem) -> AXUIElement?)?
+    private var nativeOverflowOriginalOrder: [String]?
     private var operationGeneration = 0
     func cancelPendingOperations() { operationGeneration += 1 }
     var onHiddenFramesChanged: (([CGRect]) -> Void)?
-    init(preferences: PreferencesStore) {
+    init(
+        preferences: PreferencesStore,
+        platformPolicy: MenuBarPlatformPolicy = .current
+    ) {
         self.preferences = preferences
+        self.platformPolicy = platformPolicy
         initialWindowIDs = Set(Self.fetchWindowRecords().map(\.id))
     }
 
@@ -31,16 +53,488 @@ final class MenuBarLayoutManager {
     /// StatusBarController so layout operations can target the two app-owned
     /// hosts without guessing from Control Center's provisional Item-0/1
     /// names.
-    func setStatusItemWindowIDs(control: CGWindowID?, hidden: CGWindowID?) {
+    func setStatusItemWindowIDs(control: CGWindowID?, hidden: [CGWindowID]) {
         controlStatusItemWindowID = control
-        hiddenStatusItemWindowID = hidden
-        logger.info("Published status window IDs control=\(control ?? 0, privacy: .public) hidden=\(hidden ?? 0, privacy: .public)")
+        hiddenStatusItemWindowIDs = hidden
+        logger.info("Published status window IDs control=\(control ?? 0, privacy: .public) hiddenCount=\(hidden.count, privacy: .public)")
+    }
+
+    func setStatusItemFrameProviders(
+        control: @escaping () -> CGRect?,
+        hidden: [() -> CGRect?]
+    ) {
+        controlStatusItemFrameProvider = control
+        hiddenStatusItemFrameProviders = hidden
+    }
+
+    func setAccessibilityElementRefresher(
+        _ refresher: @escaping (MenuBarItem) -> AXUIElement?
+    ) {
+        accessibilityElementRefresher = refresher
+    }
+
+    func applyNativeOverflow(
+        managed: [MenuBarItem],
+        retained: [MenuBarItem],
+        completion: @escaping (NativeOverflowTransactionResult) -> Void
+    ) {
+        guard platformPolicy.movement == .nativeOverflow, isEnabled,
+              let snapshot = nativeOverflowSnapshot(items: managed + retained) else {
+            completion(.init(succeeded: false, movedCount: 0,
+                             rollbackSucceeded: true, wasNoOp: false))
+            return
+        }
+        let currentIndex = Dictionary(
+            uniqueKeysWithValues: snapshot.currentOrder.enumerated().map { ($0.element, $0.offset) }
+        )
+        let managedIDs = managed.map(nativeItemID).filter {
+            snapshot.nodes[$0] != nil
+        }.sorted {
+            (currentIndex[$0] ?? Int.max) < (currentIndex[$1] ?? Int.max)
+        }
+        let retainedIDs = retained.map(nativeItemID).filter {
+            snapshot.nodes[$0] != nil
+        }.sorted {
+            (currentIndex[$0] ?? Int.max) < (currentIndex[$1] ?? Int.max)
+        }
+        let desiredOrder = managedIDs + snapshot.spacerIDs + retainedIDs + [snapshot.controlID]
+        performNativeOverflowTransaction(
+            nodes: snapshot.nodes,
+            currentOrder: snapshot.currentOrder,
+            desiredOrder: desiredOrder,
+            rememberOriginalOrder: true,
+            completion: completion
+        )
+    }
+
+    func restoreNativeOverflow(
+        items: [MenuBarItem],
+        completion: @escaping (NativeOverflowTransactionResult) -> Void
+    ) {
+        guard platformPolicy.movement == .nativeOverflow else {
+            completion(.init(succeeded: false, movedCount: 0,
+                             rollbackSucceeded: true, wasNoOp: false))
+            return
+        }
+        guard let originalOrder = nativeOverflowOriginalOrder else {
+            completion(.init(succeeded: true, movedCount: 0,
+                             rollbackSucceeded: true, wasNoOp: true))
+            return
+        }
+        guard let snapshot = nativeOverflowSnapshot(items: items) else {
+            completion(.init(succeeded: false, movedCount: 0,
+                             rollbackSucceeded: true, wasNoOp: false))
+            return
+        }
+        let currentSet = Set(snapshot.currentOrder)
+        var desiredOrder = originalOrder.filter(currentSet.contains)
+        let desiredSet = Set(desiredOrder)
+        let newIDs = snapshot.currentOrder.filter { !desiredSet.contains($0) }
+        if let controlIndex = desiredOrder.firstIndex(of: snapshot.controlID) {
+            desiredOrder.insert(contentsOf: newIDs.filter { $0 != snapshot.controlID }, at: controlIndex)
+        } else {
+            desiredOrder.append(contentsOf: newIDs.filter { $0 != snapshot.controlID })
+            desiredOrder.append(snapshot.controlID)
+        }
+        performNativeOverflowTransaction(
+            nodes: snapshot.nodes,
+            currentOrder: snapshot.currentOrder,
+            desiredOrder: desiredOrder,
+            rememberOriginalOrder: false
+        ) { [weak self] result in
+            if result.succeeded { self?.nativeOverflowOriginalOrder = nil }
+            completion(result)
+        }
+    }
+
+    private func nativeOverflowSnapshot(
+        items: [MenuBarItem]
+    ) -> (
+        nodes: [String: NativeOverflowNode],
+        currentOrder: [String],
+        spacerIDs: [String],
+        controlID: String
+    )? {
+        guard let controlProvider = controlStatusItemFrameProvider,
+              let controlFrame = controlProvider(),
+              let targetDisplay = Self.activeDisplayBounds().first(where: {
+                  $0.contains(CGPoint(x: controlFrame.midX, y: controlFrame.midY))
+              }),
+              !hiddenStatusItemFrameProviders.isEmpty else { return nil }
+
+        let controlID = "control"
+        var nodes: [String: NativeOverflowNode] = [
+            controlID: NativeOverflowNode(id: controlID, frame: controlProvider)
+        ]
+        let spacerIDs = hiddenStatusItemFrameProviders.indices.map { index in
+            let id = "spacer|\(index)"
+            nodes[id] = NativeOverflowNode(
+                id: id,
+                frame: hiddenStatusItemFrameProviders[index]
+            )
+            return id
+        }
+
+        var seenItemIDs = Set<String>()
+        for logicalItem in items where !logicalItem.isAlwaysVisibleSystemItem {
+            let id = nativeItemID(logicalItem)
+            guard seenItemIDs.insert(id).inserted else { continue }
+            let item = logicalItem.activationTarget(on: targetDisplay)
+            guard item.axElement != nil,
+                  let frame = freshNativeFrame(for: item),
+                  targetDisplay.contains(CGPoint(x: frame.midX, y: frame.midY)) else { return nil }
+            nodes[id] = NativeOverflowNode(id: id) { [weak self] in
+                guard let self else { return nil }
+                return self.freshNativeFrame(for: item)
+            }
+        }
+
+        let frames = nodes.compactMap { id, node -> (String, CGRect)? in
+            node.frame().map { (id, $0) }
+        }
+        guard frames.count == nodes.count else { return nil }
+        let currentOrder = frames.sorted {
+            if abs($0.1.minX - $1.1.minX) > 0.5 { return $0.1.minX < $1.1.minX }
+            return $0.0 < $1.0
+        }.map(\.0)
+        return (nodes, currentOrder, spacerIDs, controlID)
+    }
+
+    private func performNativeOverflowTransaction(
+        nodes: [String: NativeOverflowNode],
+        currentOrder: [String],
+        desiredOrder: [String],
+        rememberOriginalOrder: Bool,
+        completion: @escaping (NativeOverflowTransactionResult) -> Void
+    ) {
+        guard Set(currentOrder) == Set(desiredOrder),
+              currentOrder.count == desiredOrder.count else {
+            completion(.init(succeeded: false, movedCount: 0,
+                             rollbackSucceeded: true, wasNoOp: false))
+            return
+        }
+        let moves = NativeOverflowLayoutPolicy.movePlan(
+            currentOrder: currentOrder,
+            desiredOrder: desiredOrder
+        )
+        if moves.isEmpty {
+            if rememberOriginalOrder, nativeOverflowOriginalOrder == nil {
+                nativeOverflowOriginalOrder = currentOrder
+            }
+            DiagnosticLog.shared.record("native.layout_noop", ["items": currentOrder.count])
+            completion(.init(succeeded: true, movedCount: 0,
+                             rollbackSucceeded: true, wasNoOp: true))
+            return
+        }
+
+        let generation = operationGeneration
+        DiagnosticLog.shared.record("native.layout_begin", [
+            "moves": moves.count,
+            "items": currentOrder.count
+        ])
+        executeNativeMoves(
+            moves,
+            nodes: nodes,
+            index: 0,
+            generation: generation,
+            completed: []
+        ) { [weak self] completedMoves, succeeded in
+            guard let self else { return }
+            guard succeeded else {
+                let partialOrder = NativeOverflowLayoutPolicy.applying(
+                    completedMoves,
+                    to: currentOrder
+                ) ?? currentOrder
+                let rollbackMoves = NativeOverflowLayoutPolicy.movePlan(
+                    currentOrder: partialOrder,
+                    desiredOrder: currentOrder
+                )
+                self.executeNativeMoves(
+                    rollbackMoves,
+                    nodes: nodes,
+                    index: 0,
+                    generation: generation,
+                    completed: []
+                ) { _, rollbackSucceeded in
+                    DiagnosticLog.shared.record("native.layout_rollback", [
+                        "moved": completedMoves.count,
+                        "rollback": rollbackSucceeded ? 1 : 0
+                    ])
+                    completion(.init(
+                        succeeded: false,
+                        movedCount: completedMoves.count,
+                        rollbackSucceeded: rollbackSucceeded,
+                        wasNoOp: false
+                    ))
+                }
+                return
+            }
+            if rememberOriginalOrder, self.nativeOverflowOriginalOrder == nil {
+                self.nativeOverflowOriginalOrder = currentOrder
+            }
+            DiagnosticLog.shared.record("native.layout_end", [
+                "moved": completedMoves.count,
+                "items": currentOrder.count
+            ])
+            completion(.init(
+                succeeded: true,
+                movedCount: completedMoves.count,
+                rollbackSucceeded: true,
+                wasNoOp: false
+            ))
+        }
+    }
+
+    private func executeNativeMoves(
+        _ moves: [NativeOverflowLayoutMove],
+        nodes: [String: NativeOverflowNode],
+        index: Int,
+        generation: Int,
+        completed: [NativeOverflowLayoutMove],
+        completion: @escaping ([NativeOverflowLayoutMove], Bool) -> Void
+    ) {
+        guard generation == operationGeneration else {
+            completion(completed, false)
+            return
+        }
+        guard index < moves.count else {
+            completion(completed, true)
+            return
+        }
+        let move = moves[index]
+        guard let source = nodes[move.sourceID],
+              let target = nodes[move.targetID] else {
+            completion(completed, false)
+            return
+        }
+        moveNativeNode(source, immediatelyBefore: target) { [weak self] moved in
+            guard let self else { return }
+            guard moved else {
+                completion(completed, false)
+                return
+            }
+            var nextCompleted = completed
+            nextCompleted.append(move)
+            self.executeNativeMoves(
+                moves,
+                nodes: nodes,
+                index: index + 1,
+                generation: generation,
+                completed: nextCompleted,
+                completion: completion
+            )
+        }
+    }
+
+    private func moveNativeItemBeforeControl(
+        _ item: MenuBarItem,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard let control = controlStatusItemFrameProvider else {
+            completion(false)
+            return
+        }
+        let source = nativeNode(for: item)
+        moveNativeNode(
+            source,
+            immediatelyBefore: NativeOverflowNode(id: "control", frame: control),
+            completion: completion
+        )
+    }
+
+    private func moveNativeItemBeforeFirstSpacer(
+        _ item: MenuBarItem,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let available = hiddenStatusItemFrameProviders.enumerated().compactMap { index, provider in
+            provider().map { (index, provider, $0) }
+        }
+        guard let first = available.min(by: { $0.2.minX < $1.2.minX }) else {
+            completion(false)
+            return
+        }
+        moveNativeNode(
+            nativeNode(for: item),
+            immediatelyBefore: NativeOverflowNode(id: "spacer|\(first.0)", frame: first.1),
+            completion: completion
+        )
+    }
+
+    private func nativeNode(for item: MenuBarItem) -> NativeOverflowNode {
+        NativeOverflowNode(id: nativeItemID(item)) { [weak self, weak item] in
+            guard let self, let item else { return nil }
+            return self.freshNativeFrame(for: item)
+        }
+    }
+
+    private func nativeItemID(_ item: MenuBarItem) -> String { "item|\(item.id)" }
+
+    private func freshNativeFrame(for item: MenuBarItem) -> CGRect? {
+        if let element = accessibilityElementRefresher?(item) {
+            item.axElement = element
+            if let frame = currentAXFrame(for: element) {
+                return frame
+            }
+        }
+        if let element = item.axElement,
+           let frame = currentAXFrame(for: element) {
+            return frame
+        }
+        return nil
+    }
+
+    private func moveNativeNode(
+        _ source: NativeOverflowNode,
+        immediatelyBefore target: NativeOverflowNode,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard source.id != target.id,
+              let sourceFrame = source.frame(),
+              let targetFrame = target.frame() else {
+            completion(false)
+            return
+        }
+        if sourceFrame.minX < targetFrame.minX,
+           abs(sourceFrame.maxX - targetFrame.minX) <= 5 {
+            completion(true)
+            return
+        }
+        let start = CGPoint(x: sourceFrame.midX, y: sourceFrame.midY)
+        let end = CGPoint(x: targetFrame.minX - 2, y: targetFrame.midY)
+        guard CGPreflightPostEventAccess(),
+              Self.activeDisplayBounds().contains(where: { display in
+                  let strip = CGRect(x: display.minX, y: display.minY,
+                                     width: display.width, height: 45)
+                  return strip.contains(start) && strip.contains(end)
+              }),
+              let eventSource = CGEventSource(stateID: .combinedSessionState),
+              let commandDown = CGEvent(
+                  keyboardEventSource: eventSource,
+                  virtualKey: 0x37,
+                  keyDown: true
+              ),
+              let commandUp = CGEvent(
+                  keyboardEventSource: eventSource,
+                  virtualKey: 0x37,
+                  keyDown: false
+              ),
+              let mouseDown = nativeMouseEvent(.leftMouseDown, at: start, source: eventSource),
+              let mouseUp = nativeMouseEvent(.leftMouseUp, at: end, source: eventSource) else {
+            completion(false)
+            return
+        }
+        let dragEvents = MenuBarGeometry.coordinateDragPath(
+            from: start,
+            to: end,
+            steps: 40
+        ).compactMap {
+            nativeMouseEvent(.leftMouseDragged, at: $0, source: eventSource)
+        }
+        guard dragEvents.count == 40 else {
+            completion(false)
+            return
+        }
+        let pointer = CGEvent(source: nil)?.location
+        let generation = operationGeneration
+        eventSource.localEventsSuppressionInterval = 0
+        commandDown.flags = .maskCommand
+        commandUp.flags = []
+        DiagnosticLog.shared.record("native.move_begin", ["generation": generation])
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard CGWarpMouseCursorPosition(start) == .success else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            commandDown.post(tap: .cghidEventTap)
+            usleep(50_000)
+            mouseDown.post(tap: .cghidEventTap)
+            usleep(80_000)
+            for event in dragEvents {
+                event.post(tap: .cghidEventTap)
+                usleep(10_000)
+            }
+            mouseUp.post(tap: .cghidEventTap)
+            commandUp.post(tap: .cghidEventTap)
+            if let pointer { CGWarpMouseCursorPosition(pointer) }
+            DispatchQueue.main.async { [weak self] in
+                self?.verifyNativeMove(
+                    source,
+                    immediatelyBefore: target,
+                    check: 0,
+                    consecutiveMatches: 0,
+                    generation: generation,
+                    completion: completion
+                )
+            }
+        }
+    }
+
+    private func verifyNativeMove(
+        _ source: NativeOverflowNode,
+        immediatelyBefore target: NativeOverflowNode,
+        check: Int,
+        consecutiveMatches: Int,
+        generation: Int,
+        completion: @escaping (Bool) -> Void
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self, generation == self.operationGeneration else {
+                completion(false)
+                return
+            }
+            let decision = NativeOverflowMoveVerificationPolicy.decision(
+                source: source.frame(),
+                target: target.frame(),
+                check: check,
+                consecutiveMatches: consecutiveMatches
+            )
+            switch decision {
+            case .succeeded:
+                DiagnosticLog.shared.record("native.move_end", [
+                    "verified": 1,
+                    "checks": check + 1
+                ])
+                completion(true)
+            case .failed:
+                DiagnosticLog.shared.record("native.move_end", [
+                    "verified": 0,
+                    "checks": check + 1
+                ])
+                completion(false)
+            case .retry(let nextCheck, let stableMatches):
+                self.verifyNativeMove(
+                    source,
+                    immediatelyBefore: target,
+                    check: nextCheck,
+                    consecutiveMatches: stableMatches,
+                    generation: generation,
+                    completion: completion
+                )
+            }
+        }
+    }
+
+    private func nativeMouseEvent(
+        _ type: CGEventType,
+        at point: CGPoint,
+        source: CGEventSource
+    ) -> CGEvent? {
+        let event = CGEvent(
+            mouseEventSource: source,
+            mouseType: type,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        )
+        event?.flags = [.maskCommand, .maskNonCoalesced]
+        event?.setIntegerValueField(.mouseEventClickState, value: 1)
+        return event
     }
 
     func hide(_ items: [MenuBarItem], relativeTo controlFrame: CGRect, targetAttempt: Int = 0, completion: @escaping (Int) -> Void = { _ in }) {
         guard isEnabled else { completion(0); return }
-        switch MenuBarPlatformPolicy.current.movement {
-        case .maskOverlay:
+        switch platformPolicy.movement {
+        case .maskOverlay, .nativeOverflow, .assessmentMode:
             completion(0)
             return
         case .accessibility:
@@ -97,9 +591,12 @@ final class MenuBarLayoutManager {
     }
 
     func reveal(_ item: MenuBarItem, restoreCursorLocation: CGPoint? = nil, completion: @escaping (Bool) -> Void) {
-        switch MenuBarPlatformPolicy.current.movement {
-        case .maskOverlay:
+        switch platformPolicy.movement {
+        case .maskOverlay, .assessmentMode:
             completion(false)
+            return
+        case .nativeOverflow:
+            moveNativeItemBeforeControl(item, completion: completion)
             return
         case .accessibility:
             guard let element = item.axElement else { completion(false); return }
@@ -122,9 +619,12 @@ final class MenuBarLayoutManager {
     func rehide(_ item: MenuBarItem, restoreCursorLocation: CGPoint? = nil, targetAttempt: Int = 0, generation: Int? = nil, completion: @escaping (Bool) -> Void = { _ in }) {
         let token = generation ?? operationGeneration
         guard token == operationGeneration else { completion(false); return }
-        switch MenuBarPlatformPolicy.current.movement {
-        case .maskOverlay:
+        switch platformPolicy.movement {
+        case .maskOverlay, .assessmentMode:
             completion(false)
+            return
+        case .nativeOverflow:
+            moveNativeItemBeforeFirstSpacer(item, completion: completion)
             return
         case .accessibility:
             guard isEnabled, let element = item.axElement else { completion(false); return }
@@ -205,8 +705,8 @@ final class MenuBarLayoutManager {
     }
 
     func restore(_ items: [MenuBarItem], relativeTo controlFrame: CGRect, completion: @escaping (Int) -> Void = { _ in }) {
-        switch MenuBarPlatformPolicy.current.movement {
-        case .maskOverlay:
+        switch platformPolicy.movement {
+        case .maskOverlay, .nativeOverflow, .assessmentMode:
             completion(0)
             return
         case .accessibility:
@@ -228,8 +728,11 @@ final class MenuBarLayoutManager {
     }
 
     func show(_ item: MenuBarItem) {
-        switch MenuBarPlatformPolicy.current.movement {
-        case .maskOverlay:
+        switch platformPolicy.movement {
+        case .maskOverlay, .assessmentMode:
+            return
+        case .nativeOverflow:
+            moveNativeItemBeforeControl(item) { _ in }
             return
         case .accessibility:
             guard let element = item.axElement else { return }
@@ -248,7 +751,9 @@ final class MenuBarLayoutManager {
     }
 
     func restoreProtectedSystemItems(attempt: Int = 0, excluding excludedWindowIDs: Set<CGWindowID> = [], excludingSystemNames: Set<String> = [], completion: @escaping (Int) -> Void = { _ in }) {
-        guard MenuBarPlatformPolicy.current.movement != .maskOverlay else {
+        guard platformPolicy.movement != .maskOverlay,
+              platformPolicy.movement != .nativeOverflow,
+              platformPolicy.movement != .assessmentMode else {
             completion(0)
             return
         }
@@ -610,8 +1115,9 @@ final class MenuBarLayoutManager {
 
     private func hiddenTargetWindow() -> (id: CGWindowID, frame: CGRect)? {
         let records = windowRecords()
-        if let hiddenStatusItemWindowID,
-           let hidden = records.first(where: { $0.id == hiddenStatusItemWindowID }) {
+        if let hidden = records
+            .filter({ hiddenStatusItemWindowIDs.contains($0.id) })
+            .min(by: { $0.frame.minX < $1.frame.minX }) {
             return (hidden.id, hidden.frame)
         }
         if let hidden = records.first(where: { $0.title == "BarTuckHiddenSection" }) {

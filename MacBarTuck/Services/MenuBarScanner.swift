@@ -4,7 +4,6 @@ import ApplicationServices
 /// Reads menu-bar status windows from WindowServer without blocking on
 /// per-process Accessibility IPC.
 final class MenuBarScanner {
-    private let excludedTitles = Set(["BarTuckControlItem", "BarTuckHiddenSection"])
     private var ownedStatusWindowIDs: Set<CGWindowID> = []
     private let readWindows: () -> [[String: Any]]
     private let readDisplayBounds: () -> [CGRect]
@@ -110,7 +109,7 @@ final class MenuBarScanner {
                 // apps; regular apps may still enrich a matching status item.
                 guard matchingIndex != nil || allowsUnmatchedRegularItems ||
                     app.activationPolicy != .regular else { continue }
-                if title.isEmpty || excludedTitles.contains(title) ||
+                if title.isEmpty || Self.isOwnedStatusTitle(title) ||
                     (!isProtected && Self.isLikelyApplicationMenu(
                         attributeName: contents.attributeName,
                         title: title,
@@ -194,7 +193,7 @@ final class MenuBarScanner {
                   let ownerPID = MenuBarWindowServer.integer(kCGWindowOwnerPID as String, in: window) else { return nil }
             guard ownerPID != Int(getpid()), !ownedStatusWindowIDs.contains(CGWindowID(identifier)) else { return nil }
             let title = (window[kCGWindowName as String] as? String) ?? "Menu Bar Item"
-            guard !excludedTitles.contains(title), title != ownBundleIdentifier else { return nil }
+            guard !Self.isOwnedStatusTitle(title), title != ownBundleIdentifier else { return nil }
             let owner = (window[kCGWindowOwnerName as String] as? String) ?? "System Menu Bar"
             let runningApp = NSRunningApplication(processIdentifier: pid_t(ownerPID))
             // macOS can report the same Control Center status item with either
@@ -383,7 +382,7 @@ final class MenuBarScanner {
                   !ownedStatusWindowIDs.contains(CGWindowID(identifier)),
                   let bounds = MenuBarWindowServer.bounds(in: window) else { return nil }
             let title = (window[kCGWindowName as String] as? String) ?? ""
-            guard !excludedTitles.contains(title), title != ownBundleIdentifier else { return nil }
+            guard !Self.isOwnedStatusTitle(title), title != ownBundleIdentifier else { return nil }
             let width = Int(bounds.width.rounded())
             let height = Int(bounds.height.rounded())
             guard width > 4, height > 4, height <= 40 else { return nil }
@@ -476,6 +475,10 @@ final class MenuBarScanner {
             return "system|\(canonical)|\(occurrence)"
         }
         return "ax|\(bundleIdentifier)|\(occurrence)"
+    }
+
+    private static func isOwnedStatusTitle(_ title: String) -> Bool {
+        title == "BarTuckControlItem" || title.hasPrefix("BarTuckHiddenSection")
     }
 
     static func accessibilityLegacyIdentifiers(
