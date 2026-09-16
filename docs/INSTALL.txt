@@ -1,4 +1,4 @@
-MacBarTuck 0.1.17 安装说明
+MacBarTuck 0.1.18 安装说明
 
 1. 将 MacBarTuck.app 拖入 Applications 文件夹。
 2. 在“应用程序”中打开 MacBarTuck。
@@ -22,3 +22,4 @@ MacBarTuck 仅支持 Apple Silicon（arm64）和 macOS 15.0 或更高版本，�
 
 macOS 27 使用覆盖原菜单栏位置的稳定遮罩完成收纳，不再拖动复合菜单栏宿主。
 主屏和扩展屏会同时覆盖对应项目；关闭收纳、选择“全部显示”或退出应用会移除遮罩。
+遮罩使用当前屏幕的真实菜单栏背景，不再显示深色矩形；切换 Space 或唤醒后会原位更新背景。

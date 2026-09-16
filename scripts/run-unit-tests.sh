@@ -57,6 +57,7 @@ swiftc \
     -parse-as-library \
     "${SOURCES[@]}" \
     "$ROOT/MacBarTuck/Models/MenuBarItem.swift" \
+    "$ROOT/MacBarTuck/Services/MenuBarMaskSnapshotRenderer.swift" \
     "$ROOT/MacBarTuck/Services/MenuBarMaskingController.swift" \
     "$ROOT/Tests/MenuBarMaskingControllerTests.swift" \
     -o "$BUILD_DIR/MenuBarMaskingControllerTests"

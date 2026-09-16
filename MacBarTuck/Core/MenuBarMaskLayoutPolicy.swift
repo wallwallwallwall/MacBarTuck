@@ -139,6 +139,13 @@ enum MenuBarMaskLayoutPolicy {
     }
 
     static func framesMatch(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        if coordinatesMatch(lhs, rhs) { return true }
+        let alignedLeft = lhs.integral
+        let alignedRight = rhs.integral
+        return coordinatesMatch(alignedLeft, alignedRight)
+    }
+
+    private static func coordinatesMatch(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
         abs(lhs.minX - rhs.minX) <= frameTolerance &&
             abs(lhs.minY - rhs.minY) <= frameTolerance &&
             abs(lhs.width - rhs.width) <= frameTolerance &&

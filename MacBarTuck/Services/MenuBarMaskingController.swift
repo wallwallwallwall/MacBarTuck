@@ -13,19 +13,29 @@ protocol MenuBarMaskWindow: AnyObject {
     var maskFrame: CGRect { get }
     var isMaskVisible: Bool { get }
     func setMaskFrame(_ frame: CGRect)
+    func setMaskArtwork(_ artwork: NSImage?)
+    func setCaptureExcluded(_ excluded: Bool)
     func showMask()
     func hideMask()
     func closeMask()
+}
+
+extension MenuBarMaskWindow {
+    func setMaskArtwork(_ artwork: NSImage?) {}
+    func setCaptureExcluded(_ excluded: Bool) {}
 }
 
 @MainActor
 final class MenuBarMaskingController {
     typealias DisplayProvider = @MainActor () -> [MenuBarMaskDisplay]
     typealias RepresentationFrameProvider = @MainActor (MenuBarItem) -> CGRect?
+    typealias SnapshotProvider = @MainActor ([MenuBarMaskDisplay]) ->
+        MenuBarMaskSnapshotRenderer.DisplaySnapshots
     typealias WindowFactory = @MainActor (MenuBarMaskPlacement) -> any MenuBarMaskWindow
 
     private let displayProvider: DisplayProvider
     private let representationFrameProvider: RepresentationFrameProvider
+    private let snapshotProvider: SnapshotProvider
     private let windowFactory: WindowFactory
     private var windows = [String: any MenuBarMaskWindow]()
     private var placements = [String: MenuBarMaskPlacement]()
@@ -35,10 +45,12 @@ final class MenuBarMaskingController {
     init(
         displayProvider: @escaping DisplayProvider = MenuBarMaskingController.currentDisplays,
         representationFrameProvider: @escaping RepresentationFrameProvider = MenuBarMaskingController.currentFrame,
+        snapshotProvider: @escaping SnapshotProvider = MenuBarMaskSnapshotRenderer.captureMenuBars,
         windowFactory: @escaping WindowFactory = { MenuBarMaskPanel(placement: $0) }
     ) {
         self.displayProvider = displayProvider
         self.representationFrameProvider = representationFrameProvider
+        self.snapshotProvider = snapshotProvider
         self.windowFactory = windowFactory
     }
 
@@ -71,17 +83,28 @@ final class MenuBarMaskingController {
             current: currentFrames,
             desired: desiredPlacements
         )
+        let changedPlacements = reconciliation.additions + reconciliation.updates
+        let artwork = artworkByPlacement(
+            changedPlacements,
+            displays: displays
+        )
 
         for key in reconciliation.removals {
             windows.removeValue(forKey: key)?.closeMask()
             placements.removeValue(forKey: key)
         }
         for placement in reconciliation.updates {
+            if let image = artwork[placement.key] {
+                windows[placement.key]?.setMaskArtwork(image)
+            }
             windows[placement.key]?.setMaskFrame(placement.frame)
             placements[placement.key] = placement
         }
         for placement in reconciliation.additions {
             let window = windowFactory(placement)
+            if let image = artwork[placement.key] {
+                window.setMaskArtwork(image)
+            }
             windows[placement.key] = window
             placements[placement.key] = placement
             if !revealedItemIDs.contains(placement.itemID) {
@@ -133,6 +156,7 @@ final class MenuBarMaskingController {
             }
         } else {
             guard revealedItemIDs.remove(itemID) != nil else { return }
+            refreshAppearance(itemIDs: [itemID])
         }
         for placement in placements.values where placement.itemID == itemID {
             if revealed {
@@ -141,6 +165,10 @@ final class MenuBarMaskingController {
                 windows[placement.key]?.showMask()
             }
         }
+    }
+
+    func refreshAppearance() {
+        refreshAppearance(itemIDs: maskedItemIDs)
     }
 
     @discardableResult
@@ -172,6 +200,47 @@ final class MenuBarMaskingController {
                 menuBarHeight: menuBarHeight
             )
         }
+    }
+
+    private func refreshAppearance(itemIDs: Set<String>) {
+        guard !itemIDs.isEmpty else { return }
+        let targetPlacements = placements.values.filter { itemIDs.contains($0.itemID) }
+        let displays = displayProvider()
+        let artwork = artworkByPlacement(targetPlacements, displays: displays)
+        for placement in targetPlacements {
+            if let image = artwork[placement.key] {
+                windows[placement.key]?.setMaskArtwork(image)
+            }
+        }
+    }
+
+    private func artworkByPlacement(
+        _ targetPlacements: [MenuBarMaskPlacement],
+        displays: [MenuBarMaskDisplay]
+    ) -> [String: NSImage] {
+        guard !targetPlacements.isEmpty else { return [:] }
+        let targetDisplayIDs = Set(targetPlacements.map(\.displayID))
+        let targetDisplays = displays.filter { targetDisplayIDs.contains($0.id) }
+        let displaysByID = Dictionary(uniqueKeysWithValues: targetDisplays.map { ($0.id, $0) })
+        let capturedWindows = placements.values.compactMap { placement -> (any MenuBarMaskWindow)? in
+            guard targetDisplayIDs.contains(placement.displayID) else { return nil }
+            return windows[placement.key]
+        }
+        capturedWindows.forEach { $0.setCaptureExcluded(true) }
+        defer { capturedWindows.forEach { $0.setCaptureExcluded(false) } }
+        let snapshots = snapshotProvider(targetDisplays)
+        return Dictionary(uniqueKeysWithValues: targetPlacements.compactMap { placement in
+            let image = displaysByID[placement.displayID].flatMap { display in
+                snapshots[placement.displayID].flatMap { snapshot in
+                    MenuBarMaskSnapshotRenderer.artwork(
+                        for: placement,
+                        display: display,
+                        snapshot: snapshot
+                    )
+                }
+            }
+            return image.map { (placement.key, $0) }
+        })
     }
 
     private static func currentFrame(for item: MenuBarItem) -> CGRect? {
@@ -209,7 +278,7 @@ final class MenuBarMaskingController {
 
 @MainActor
 final class MenuBarMaskPanel: NSPanel, MenuBarMaskWindow {
-    init(placement: MenuBarMaskPlacement) {
+    init(placement: MenuBarMaskPlacement, artwork: NSImage? = nil) {
         super.init(
             contentRect: placement.frame,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -227,7 +296,10 @@ final class MenuBarMaskPanel: NSPanel, MenuBarMaskWindow {
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         ignoresMouseEvents = false
         sharingType = .readOnly
-        contentView = MenuBarMaskView(frame: CGRect(origin: .zero, size: placement.frame.size))
+        contentView = MenuBarMaskView(
+            frame: CGRect(origin: .zero, size: placement.frame.size),
+            artwork: artwork
+        )
     }
 
     override var canBecomeKey: Bool { false }
@@ -241,6 +313,14 @@ final class MenuBarMaskPanel: NSPanel, MenuBarMaskWindow {
             context.duration = 0
             setFrame(frame, display: true)
         }
+    }
+
+    func setMaskArtwork(_ artwork: NSImage?) {
+        (contentView as? MenuBarMaskView)?.setArtwork(artwork)
+    }
+
+    func setCaptureExcluded(_ excluded: Bool) {
+        sharingType = excluded ? .none : .readOnly
     }
 
     func showMask() {
@@ -260,23 +340,26 @@ final class MenuBarMaskPanel: NSPanel, MenuBarMaskWindow {
     }
 }
 
-private final class MenuBarMaskView: NSVisualEffectView {
-    override init(frame frameRect: NSRect) {
+private final class MenuBarMaskView: NSView {
+    private let imageView: NSImageView
+
+    init(frame frameRect: NSRect, artwork: NSImage?) {
+        imageView = NSImageView(frame: CGRect(origin: .zero, size: frameRect.size))
         super.init(frame: frameRect)
-        material = .menu
-        blendingMode = .behindWindow
-        state = .active
-        wantsLayer = true
-        updateTint()
+        autoresizingMask = [.width, .height]
+
+        let fallback = Self.makeFallbackView(frame: bounds)
+        fallback.autoresizingMask = [.width, .height]
+        addSubview(fallback)
+
+        imageView.imageScaling = .scaleAxesIndependently
+        imageView.autoresizingMask = [.width, .height]
+        addSubview(imageView)
+        setArtwork(artwork)
     }
 
     required init?(coder: NSCoder) {
         nil
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        updateTint()
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -286,11 +369,26 @@ private final class MenuBarMaskView: NSVisualEffectView {
     override func scrollWheel(with event: NSEvent) {}
     override func isAccessibilityElement() -> Bool { false }
 
-    private func updateTint() {
-        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        layer?.backgroundColor = NSColor(
-            calibratedWhite: isDark ? 0.08 : 0.94,
-            alpha: 0.72
-        ).cgColor
+    func setArtwork(_ artwork: NSImage?) {
+        imageView.image = artwork
+        imageView.isHidden = artwork == nil
+    }
+
+    private static func makeFallbackView(frame: CGRect) -> NSView {
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView(frame: frame)
+            glass.cornerRadius = 0
+            glass.tintColor = .clear
+            glass.style = .clear
+            if #available(macOS 27.0, *) {
+                glass.effectIsInteractive = false
+            }
+            return glass
+        }
+        let effect = NSVisualEffectView(frame: frame)
+        effect.material = .titlebar
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        return effect
     }
 }

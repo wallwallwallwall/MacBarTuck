@@ -8,6 +8,7 @@ private final class RefreshMaskWindow: MenuBarMaskWindow {
     private(set) var showCount = 0
     private(set) var hideCount = 0
     private(set) var closeCount = 0
+    private(set) var artworkUpdateCount = 0
 
     init(frame: CGRect) {
         maskFrame = frame
@@ -16,6 +17,10 @@ private final class RefreshMaskWindow: MenuBarMaskWindow {
     func setMaskFrame(_ frame: CGRect) {
         maskFrame = frame
         setFrameCount += 1
+    }
+
+    func setMaskArtwork(_ artwork: NSImage?) {
+        artworkUpdateCount += 1
     }
 
     func showMask() {
@@ -563,9 +568,14 @@ enum RefreshIsolationTests {
         )
         var maskWindows = [RefreshMaskWindow]()
         var liveMaskFrame = CGRect(x: 1_000, y: 0, width: 30, height: 30)
+        var snapshotRequestCount = 0
         let maskingController = MenuBarMaskingController(
             displayProvider: { [display] },
             representationFrameProvider: { _ in liveMaskFrame },
+            snapshotProvider: { _ in
+                snapshotRequestCount += 1
+                return [:]
+            },
             windowFactory: { placement in
                 let window = RefreshMaskWindow(frame: placement.frame)
                 maskWindows.append(window)
@@ -616,6 +626,43 @@ enum RefreshIsolationTests {
             throw NSError(domain: "RefreshIsolation", code: 43,
                 userInfo: [NSLocalizedDescriptionKey:
                     "The store reported a hidden item before its mask window became visible."])
+        }
+
+        store.startMonitoring()
+        let originalSnapshotRequestCount = snapshotRequestCount
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.activeSpaceDidChangeNotification,
+            object: NSWorkspace.shared
+        )
+        guard await waitUntil({ snapshotRequestCount > originalSnapshotRequestCount }) else {
+            throw NSError(domain: "RefreshIsolation", code: 69,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Changing Space did not refresh the active menu-bar mask artwork."])
+        }
+        guard maskWindows.count == 1,
+              maskWindows[0].setFrameCount == 0,
+              maskWindows[0].showCount == 1 else {
+            throw NSError(domain: "RefreshIsolation", code: 70,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Changing Space rebuilt or moved an otherwise stable mask window."])
+        }
+
+        let snapshotRequestsBeforeWake = snapshotRequestCount
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didWakeNotification,
+            object: NSWorkspace.shared
+        )
+        guard await waitUntil({ snapshotRequestCount > snapshotRequestsBeforeWake }) else {
+            throw NSError(domain: "RefreshIsolation", code: 71,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Waking the Mac did not refresh the active menu-bar mask artwork."])
+        }
+        guard maskWindows.count == 1,
+              maskWindows[0].setFrameCount == 0,
+              maskWindows[0].showCount == 1 else {
+            throw NSError(domain: "RefreshIsolation", code: 72,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Waking the Mac rebuilt or reordered an otherwise stable mask window."])
         }
 
         var geometryCallbacks = 0

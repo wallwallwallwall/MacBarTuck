@@ -41,6 +41,7 @@ final class MenuBarItemStore: ObservableObject {
     private var layoutStartGeneration = 0
     private var automaticLayoutWorkItem: DispatchWorkItem?
     private var refreshWorkItem: DispatchWorkItem?
+    private var maskAppearanceWorkItem: DispatchWorkItem?
     private var captureTask: Task<Void, Never>?
     private var monitorTimer: Timer?
     private var maskGeometryTimer: Timer?
@@ -123,6 +124,7 @@ final class MenuBarItemStore: ObservableObject {
         monitorTimer?.invalidate()
         maskGeometryTimer?.invalidate()
         refreshWorkItem?.cancel()
+        maskAppearanceWorkItem?.cancel()
         layoutWorkItem?.cancel()
         layoutStartWorkItem?.cancel()
         automaticLayoutWorkItem?.cancel()
@@ -270,12 +272,20 @@ final class MenuBarItemStore: ObservableObject {
         lastWindowSignature = scanner.windowSignature()
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didLaunchApplicationNotification,
-                     NSWorkspace.didTerminateApplicationNotification,
-                     NSWorkspace.didWakeNotification] {
+                     NSWorkspace.didTerminateApplicationNotification] {
             workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in
                     self?.scanner.invalidateApplicationIdentityCache()
                     self?.scheduleRefresh(after: 0.35, reason: "workspace change")
+                }
+            })
+        }
+        for name in [NSWorkspace.didWakeNotification,
+                     NSWorkspace.activeSpaceDidChangeNotification,
+                     NSWorkspace.sessionDidBecomeActiveNotification] {
+            workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                Task { @MainActor in
+                    self?.handleWorkspaceAppearanceChanged(notification.name)
                 }
             })
         }
@@ -461,6 +471,32 @@ final class MenuBarItemStore: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
+    private func scheduleMaskAppearanceRefresh(after delay: TimeInterval, reason: String) {
+        guard platformPolicy.movement == .maskOverlay else { return }
+        maskAppearanceWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.maskAppearanceWorkItem = nil
+            guard !self.isTerminating else { return }
+            if self.isApplyingLayout || self.isRestoringLayout || self.activatingItemID != nil {
+                self.scheduleMaskAppearanceRefresh(after: 0.25, reason: reason)
+                return
+            }
+            guard !self.maskedItemIDs.union(self.maskingController.maskedItemIDs).isEmpty else { return }
+            self.maskingController.refreshAppearance()
+            self.logger.debug("Refreshed mask appearance after \(reason, privacy: .public)")
+            DiagnosticLog.shared.record("mask.appearance_refresh")
+        }
+        maskAppearanceWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func handleWorkspaceAppearanceChanged(_ name: Notification.Name) {
+        scanner.invalidateApplicationIdentityCache()
+        scheduleRefresh(after: 0.25, reason: name.rawValue, source: .observation)
+        scheduleMaskAppearanceRefresh(after: 0.45, reason: name.rawValue)
+    }
+
     private func visibleScannedItems(selectedIDs: Set<String>) -> [MenuBarItem] {
         scanner.scan(selectedIDs: selectedIDs).filter { item in
             guard let windowID = item.windowID else { return true }
@@ -559,6 +595,7 @@ final class MenuBarItemStore: ObservableObject {
     private func handleScreenParametersChanged() {
         DiagnosticLog.shared.record("display.changed")
         scheduleRefresh(after: 0.5, reason: "display configuration changed", source: .observation)
+        scheduleMaskAppearanceRefresh(after: 0.75, reason: "display configuration changed")
     }
 
     private func recomputeManagedSelection(publish: Bool = true) {
@@ -1245,6 +1282,7 @@ final class MenuBarItemStore: ObservableObject {
         monitorTimer?.invalidate()
         maskGeometryTimer?.invalidate()
         refreshWorkItem?.cancel()
+        maskAppearanceWorkItem?.cancel()
         captureGeneration += 1
         captureTask?.cancel()
         captureTask = nil
