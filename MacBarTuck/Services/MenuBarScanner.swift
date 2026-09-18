@@ -100,8 +100,15 @@ final class MenuBarScanner {
                     bundleIdentifier: bundleID
                 )
                 let matchingIndex = results.firstIndex { existing in
-                    Self.framesRepresentSameItem(existing.frame, frame) ||
-                        (existing.ownerPID == app.processIdentifier && existing.title == title)
+                    Self.accessibilityItemMatches(
+                        existingOwnerPID: existing.ownerPID,
+                        existingHasAccessibilityElement: existing.axElement != nil,
+                        existingFrame: existing.frame,
+                        existingTitle: existing.title,
+                        candidateOwnerPID: app.processIdentifier,
+                        candidateFrame: frame,
+                        candidateTitle: title
+                    )
                 }
                 let isProtected = MenuBarSystemItemClassifier.isProtected(title, owner: bundleID)
                 // A regular application's AX menu bar also contains File/Edit
@@ -502,6 +509,21 @@ final class MenuBarScanner {
         let horizontalOverlap = max(0, min(lhs.maxX, rhs.maxX) - max(lhs.minX, rhs.minX))
         return horizontalOverlap >= min(lhs.width, rhs.width) * 0.5 &&
             abs(lhs.minY - rhs.minY) <= 4
+    }
+
+    static func accessibilityItemMatches(
+        existingOwnerPID: pid_t?,
+        existingHasAccessibilityElement: Bool,
+        existingFrame: CGRect,
+        existingTitle: String,
+        candidateOwnerPID: pid_t,
+        candidateFrame: CGRect,
+        candidateTitle: String
+    ) -> Bool {
+        let hasSameOwner = existingOwnerPID == candidateOwnerPID
+        if existingHasAccessibilityElement && !hasSameOwner { return false }
+        return framesRepresentSameItem(existingFrame, candidateFrame) ||
+            (hasSameOwner && existingTitle == candidateTitle)
     }
 
     static func isDiscreteAccessibilitySeed(frame: CGRect, displayBounds: [CGRect]) -> Bool {

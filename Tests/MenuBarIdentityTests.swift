@@ -30,6 +30,7 @@ private enum MenuBarIdentityTests {
         try inputSourcePresentation()
         try applicationIdentityResolution()
         try macOS27AccessibilityDiscoveryBoundaries()
+        try accessibilityItemsDoNotMergeAcrossApplications()
         try ownedStatusItemsStayExcluded()
         try accessibilityRestorationFrame()
         try stableMirrorIdentity()
@@ -369,6 +370,36 @@ private enum MenuBarIdentityTests {
                    "A composite host must not match every overlapping AX child.")
         try expect(MenuBarScanner.framesRepresentSameItem(discreteWindow, accessibilityChild),
                    "Similar per-item WindowServer and AX frames must still merge.")
+    }
+
+    private static func accessibilityItemsDoNotMergeAcrossApplications() throws {
+        let tailscaleFrame = CGRect(x: 1229.5, y: 4.5, width: 24, height: 24)
+        let snipasteFrame = CGRect(x: 1223, y: 4.5, width: 24, height: 24)
+
+        try expect(
+            !MenuBarScanner.accessibilityItemMatches(
+                existingOwnerPID: 2311,
+                existingHasAccessibilityElement: true,
+                existingFrame: tailscaleFrame,
+                existingTitle: "Tailscale",
+                candidateOwnerPID: 2316,
+                candidateFrame: snipasteFrame,
+                candidateTitle: "Snipaste"
+            ),
+            "Overlapping AX items from different applications must remain independent."
+        )
+        try expect(
+            MenuBarScanner.accessibilityItemMatches(
+                existingOwnerPID: 1110,
+                existingHasAccessibilityElement: false,
+                existingFrame: tailscaleFrame,
+                existingTitle: "io.tailscale.ipn.macsys",
+                candidateOwnerPID: 2311,
+                candidateFrame: tailscaleFrame,
+                candidateTitle: "Tailscale"
+            ),
+            "A WindowServer seed may still be enriched by its originating AX item."
+        )
     }
 
     private static func ownedStatusItemsStayExcluded() throws {

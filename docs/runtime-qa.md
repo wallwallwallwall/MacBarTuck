@@ -165,3 +165,12 @@
 - 完整 Xcode 27 Debug、Release 与 Analyze 均通过；唯一警告为项目未依赖 `AppIntents.framework` 时跳过 App Intents 元数据提取。项目继续固定为 Apple Silicon `arm64`，最低系统 macOS 15.0。
 - 最终双屏遮罩探针发现 11 个当前已选项目，在两块显示器创建 22 个可见遮罩，结果为 `masked=11 failed=0 panels=22 desired=22 missing=0 extra=0`。将 22 个遮罩强制改成高亮测试色后调用背景刷新，窗口 ID 全部保持不变且仍可见；结束时 `closed=22 remaining=0`，没有残留窗口或菜单项位置写入。
 - `screencapture` 仍因当前终端的录屏链路输出全黑，因此不将该命令生成的图片作为视觉验收。应用内部的授权 WindowServer 抓取、背景刷新探针及此前有效的主屏/扩展屏截图共同验证补片连续；macOS 15/26 的真机外观仍为 `UNVERIFIED`，对应旧布局路径由策略回归覆盖。
+
+## 0.1.22 跨应用图标身份修复
+
+日期：2026-09-18。
+
+- 当前 macOS 27 真机探针复现：旧扫描结果产生 `id=ax|io.tailscale.ipn.macsys|0`，但标题、bundle 和最终图标被 Snipaste 覆盖；Tailscale 与 Snipaste 的 AX 区域相邻重叠，旧逻辑仅按几何位置匹配，没有限制 AX 项所属进程。
+- 新匹配策略禁止不同进程的既有 AX 项互相合并；跨进程几何匹配只保留给尚未绑定 AX 元素的 WindowServer 兼容种子，继续支持 macOS 15/26 的混合发现路径。
+- 回归测试覆盖跨应用重叠必须分离、WindowServer 种子仍可被 AX 项补全。修复后的真机扫描分别得到钉钉、Tailscale、Snipaste 三个唯一 bundle，三者名称和应用图标哈希均不同。
+- 顶部仍显示的 MacBarTuck 自身入口、控制中心、Wi-Fi、时钟及录屏/定位等系统安全项目属于保留项，不计入第三方应用收纳结果。

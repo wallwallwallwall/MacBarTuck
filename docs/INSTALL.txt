@@ -1,4 +1,4 @@
-MacBarTuck 0.1.21 安装说明
+MacBarTuck 0.1.22 安装说明
 
 1. 将 MacBarTuck.app 拖入 Applications 文件夹。
 2. 在“应用程序”中打开 MacBarTuck。
@@ -22,6 +22,7 @@ MacBarTuck 仅支持 Apple Silicon（arm64）和 macOS 15.0 或更高版本，�
 
 macOS 27 使用系统 Assessment Mode 按应用隐藏菜单栏项目，不再创建遮罩窗口或透明分隔项。
 隐藏后由系统自动回收菜单栏位置，不应出现黑框或中间空槽。
+MacBarTuck 自身入口以及控制中心、Wi-Fi、时钟、录屏/定位等系统安全项目会继续显示，不属于收纳失败。
 关闭收纳、选择“全部显示”或退出应用会释放过滤状态并恢复菜单栏项目。
 
 macOS 27 路径使用未公开的系统接口，适合开源侧载分发，不适合提交 Mac App Store。
