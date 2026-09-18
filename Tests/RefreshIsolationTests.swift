@@ -101,6 +101,7 @@ private final class RefreshAssessmentManager: MenuBarAssessmentModeManaging {
 enum RefreshIsolationTests {
     static func main() async throws {
         _ = NSApplication.shared
+        try duplicateItemIDsAreNormalized()
         try await assessmentModeStoreLifecycle()
         try await failedAssessmentModeApplyDoesNotPublishHiddenState()
         try await nativeOverflowStoreLifecycle()
@@ -346,6 +347,53 @@ enum RefreshIsolationTests {
         try await Task.sleep(for: .milliseconds(1200))
         guard !store.layoutManagementEnabled, !store.isHiddenSectionActive else { throw NSError(domain: "RefreshIsolation", code: 9) }
         print("RefreshIsolationTests: refresh isolation and mask overlay lifecycle passed")
+    }
+
+    private static func duplicateItemIDsAreNormalized() throws {
+        let first = MenuBarItem(
+            id: "ax|com.example.utility|0",
+            title: "First",
+            ownerName: "First",
+            bundleIdentifier: "com.example.utility",
+            frame: CGRect(x: 1_000, y: 0, width: 24, height: 24),
+            axElement: nil,
+            isSelected: true,
+            supportsPressAction: true
+        )
+        let duplicate = MenuBarItem(
+            id: first.id,
+            title: "Duplicate",
+            ownerName: "Duplicate",
+            bundleIdentifier: "com.example.utility.helper",
+            frame: CGRect(x: 1_030, y: 0, width: 24, height: 24),
+            axElement: nil,
+            isSelected: true,
+            supportsPressAction: true
+        )
+        let distinct = MenuBarItem(
+            id: "ax|com.example.other|0",
+            title: "Other",
+            ownerName: "Other",
+            bundleIdentifier: "com.example.other",
+            frame: CGRect(x: 1_060, y: 0, width: 24, height: 24),
+            axElement: nil,
+            isSelected: false,
+            supportsPressAction: true
+        )
+
+        let normalized = MenuBarItemStore.uniqueItemsPreservingFirstOccurrence([
+            first, duplicate, distinct
+        ])
+        guard normalized.count == 2,
+              normalized[0] === first,
+              normalized[1] === distinct else {
+            throw NSError(
+                domain: "RefreshIsolation",
+                code: 63,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Duplicate scan IDs were not normalized without replacing the first item."]
+            )
+        }
     }
 
     private static func assessmentModeStoreLifecycle() async throws {

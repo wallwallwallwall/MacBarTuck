@@ -528,6 +528,22 @@ private enum MenuBarRuntimeTests {
             ),
             "The AXMenuBar fallback must continue rejecting application menu text."
         )
+        try expect(
+            !MenuBarScanner.allowsUnmatchedAccessibilityItem(
+                attributeName: kAXMenuBarAttribute as String,
+                isRegularApplication: true,
+                allowsUnmatchedRegularItems: true
+            ),
+            "A regular application's AXMenuBar must not become status items on macOS 27."
+        )
+        try expect(
+            MenuBarScanner.allowsUnmatchedAccessibilityItem(
+                attributeName: "AXExtrasMenuBar",
+                isRegularApplication: true,
+                allowsUnmatchedRegularItems: true
+            ),
+            "A regular application's AXExtrasMenuBar must remain discoverable on macOS 27."
+        )
         let firstDynamicID = MenuBarScanner.accessibilityItemIdentifier(
             bundleIdentifier: "com.bjango.istatmenus.status", title: "CPU 12%",
             occurrence: 1, isProtected: false

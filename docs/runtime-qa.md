@@ -174,3 +174,14 @@
 - 新匹配策略禁止不同进程的既有 AX 项互相合并；跨进程几何匹配只保留给尚未绑定 AX 元素的 WindowServer 兼容种子，继续支持 macOS 15/26 的混合发现路径。
 - 回归测试覆盖跨应用重叠必须分离、WindowServer 种子仍可被 AX 项补全。修复后的真机扫描分别得到钉钉、Tailscale、Snipaste 三个唯一 bundle，三者名称和应用图标哈希均不同。
 - 顶部仍显示的 MacBarTuck 自身入口、控制中心、Wi-Fi、时钟及录屏/定位等系统安全项目属于保留项，不计入第三方应用收纳结果。
+
+## 0.1.23 重复菜单身份崩溃修复
+
+日期：2026-09-18。
+
+- `0.1.22 (24)` 的崩溃报告定位到 `MenuBarItemStore.refresh(source:)` 第 432 行：`Dictionary(uniqueKeysWithValues:)` 收到重复项目 ID 后触发 `EXC_BREAKPOINT (SIGTRAP)`，与权限或 Assessment Mode 本身无关。
+- 真机 AX 探针复现为 `32` 项但只有 `31` 个唯一 ID。豆包主进程在已断开的左侧扩展屏保留普通 `AXMenuBar` 坐标，扫描器把其中的“Apple”菜单误当成隐藏状态项；豆包浏览器 helper 的真实 `AXExtrasMenuBar` 又解析到同一个外层 bundle，二者同时生成 `ax|com.bot.neotix.doubao|0`。
+- 修复后，普通前台应用的未匹配 `AXMenuBar` 不再进入状态项列表，`AXExtrasMenuBar` 发现保持不变；刷新入口同时按首次出现顺序规范化异常重复 ID，并记录 `refresh.previous_duplicate_ids` 或 `refresh.scanned_duplicate_ids`，避免未来扫描异常直接终止进程。
+- 修复后的同机探针返回 `15` 项、`15` 个唯一 ID；钉钉、Tailscale、豆包与 Snipaste 均保留独立 bundle、宿主进程和应用图标来源。macOS 15/26 的 WindowServer 与 AX 混合路径仍允许已有窗口种子被匹配补全。
+- 最终 DMG 内应用为 `0.1.23 (25)`、仅 `arm64`，临时签名和 SHA-256 校验通过；DMG 内 Release 应用完成中文、英文各 8 个安全界面场景，共 16 个。
+- `/Applications/MacBarTuck.app` 更新到 build 25 后，在两项权限均生效的真实进程中完成启动扫描 `15` 项和自动收纳，并通过页面“重新扫描”连续刷新；项目总数保持 `15`，进程运行期间没有 `refresh.previous_duplicate_ids`、`refresh.scanned_duplicate_ids` 或新的崩溃报告。临时签名经 LaunchServices 重启时仍可能短暂显示权限未生效，权限配置不作为本轮阻塞。

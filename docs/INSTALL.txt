@@ -1,4 +1,4 @@
-MacBarTuck 0.1.22 安装说明
+MacBarTuck 0.1.23 安装说明
 
 1. 将 MacBarTuck.app 拖入 Applications 文件夹。
 2. 在“应用程序”中打开 MacBarTuck。

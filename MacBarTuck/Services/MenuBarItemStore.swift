@@ -429,15 +429,29 @@ final class MenuBarItemStore: ObservableObject {
         if requiresScreenRecording { requiresScreenRecording = false }
         guard !isRefreshing, !isCapturing else { refreshAgain = true; return }
         isRefreshing = true
-        let previousByID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-        let previousByWindowID = Dictionary(items.flatMap { item in
+        let previousItems = Self.uniqueItemsPreservingFirstOccurrence(items)
+        let removedPreviousDuplicates = items.count - previousItems.count
+        if removedPreviousDuplicates > 0 {
+            DiagnosticLog.shared.record("refresh.previous_duplicate_ids", [
+                "removed": removedPreviousDuplicates
+            ])
+        }
+        let previousByID = Dictionary(uniqueKeysWithValues: previousItems.map { ($0.id, $0) })
+        let previousByWindowID = Dictionary(previousItems.flatMap { item in
             item.windowRepresentations.compactMap { representation in representation.windowID.map { ($0, item) } }
         }, uniquingKeysWith: { first, _ in first })
-        let previousOrder = Dictionary(uniqueKeysWithValues: items.enumerated().map { ($0.element.id, $0.offset) })
+        let previousOrder = Dictionary(uniqueKeysWithValues: previousItems.enumerated().map { ($0.element.id, $0.offset) })
         let knownBefore = preferences.knownItemIDs
         let knownWindowIDsBefore = preferences.knownWindowIDs
         let selectedBefore = preferences.selectedIDs
-        let scanned = visibleScannedItems(selectedIDs: selectedBefore)
+        let scannedItems = visibleScannedItems(selectedIDs: selectedBefore)
+        let scanned = Self.uniqueItemsPreservingFirstOccurrence(scannedItems)
+        let removedScannedDuplicates = scannedItems.count - scanned.count
+        if removedScannedDuplicates > 0 {
+            DiagnosticLog.shared.record("refresh.scanned_duplicate_ids", [
+                "removed": removedScannedDuplicates
+            ])
+        }
         let currentIDs = Set(scanned.map(\.id))
         let currentWindowIDs = Set(scanned.compactMap(\.windowID))
         let latestDisplays = DisplaySnapshotProvider.snapshots()
@@ -518,6 +532,11 @@ final class MenuBarItemStore: ObservableObject {
                 self.scheduleRefresh(after: 0.2, reason: "coalesced refresh", source: .observation)
             }
         }
+    }
+
+    static func uniqueItemsPreservingFirstOccurrence(_ items: [MenuBarItem]) -> [MenuBarItem] {
+        var seen = Set<String>()
+        return items.filter { seen.insert($0.id).inserted }
     }
 
     func refreshIfWindowSetChanged(immediate: Bool = false) {

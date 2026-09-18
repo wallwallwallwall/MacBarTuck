@@ -114,8 +114,11 @@ final class MenuBarScanner {
                 // A regular application's AX menu bar also contains File/Edit
                 // style menus. Only admit unmatched elements from accessory
                 // apps; regular apps may still enrich a matching status item.
-                guard matchingIndex != nil || allowsUnmatchedRegularItems ||
-                    app.activationPolicy != .regular else { continue }
+                guard matchingIndex != nil || Self.allowsUnmatchedAccessibilityItem(
+                    attributeName: contents.attributeName,
+                    isRegularApplication: app.activationPolicy == .regular,
+                    allowsUnmatchedRegularItems: allowsUnmatchedRegularItems
+                ) else { continue }
                 if title.isEmpty || Self.isOwnedStatusTitle(title) ||
                     (!isProtected && Self.isLikelyApplicationMenu(
                         attributeName: contents.attributeName,
@@ -472,6 +475,17 @@ final class MenuBarScanner {
 
     static func isLikelyApplicationMenu(attributeName: String, title: String, frame: CGRect) -> Bool {
         attributeName == kAXMenuBarAttribute as String && (title.count > 18 || frame.width > 150)
+    }
+
+    static func allowsUnmatchedAccessibilityItem(
+        attributeName: String,
+        isRegularApplication: Bool,
+        allowsUnmatchedRegularItems: Bool
+    ) -> Bool {
+        if attributeName == kAXMenuBarAttribute as String && isRegularApplication {
+            return false
+        }
+        return allowsUnmatchedRegularItems || !isRegularApplication
     }
 
     static func accessibilityItemIdentifier(
