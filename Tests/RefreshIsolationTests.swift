@@ -41,6 +41,7 @@ private final class RefreshMaskWindow: MenuBarMaskWindow {
 
 private final class RefreshItemActivator: MenuBarItemActivating {
     var directResult = false
+    var movedResult = false
     private(set) var directActivationCount = 0
     private(set) var hitTestActivationCount = 0
     private(set) var movedActivationCount = 0
@@ -62,7 +63,7 @@ private final class RefreshItemActivator: MenuBarItemActivating {
         completion: @escaping (Bool) -> Void
     ) {
         movedActivationCount += 1
-        completion(false)
+        completion(movedResult)
     }
 
     func activateRightClick(_ item: MenuBarItem, completion: @escaping (Bool) -> Void) {
@@ -479,6 +480,9 @@ enum RefreshIsolationTests {
         }
 
         let cpuItem = store.items.first { $0.title == "CPU" }!
+        cpuItem.axElement = AXUIElementCreateSystemWide()
+        cpuItem.supportsPressAction = true
+        activator.movedResult = true
         let metricItemIDs = Set(store.items.filter {
             $0.bundleIdentifier == "com.example.metrics"
         }.map(\.id))
@@ -486,7 +490,8 @@ enum RefreshIsolationTests {
         guard await waitUntil({
             assessmentManager.appliedConfigurations.count == 3 &&
                 store.temporarilyVisibleItemIDs == metricItemIDs &&
-                activator.directActivationCount == 1 &&
+                activator.directActivationCount == 0 &&
+                activator.movedActivationCount == 1 &&
                 store.activatingItemID == nil
         }), assessmentManager.activeConfiguration?.allowedBundleIdentifiers.contains(
             "com.example.metrics"

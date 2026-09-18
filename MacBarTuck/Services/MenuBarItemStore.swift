@@ -2245,10 +2245,15 @@ final class MenuBarItemStore: ObservableObject {
     ) {
         guard activatingItemID == item.id, !isTerminating else { return }
         if mouseButton == .left {
-            if activator.activateDirectly(item) ||
-                activateUsingFreshAccessibility(item) ||
-                (item.windowID == nil && activator.activateViaAccessibilityHitTest(item)) {
-                DiagnosticLog.shared.record("assessment.activation_complete", ["button": 1])
+            // Assessment Mode can rebuild the status item while revealing its
+            // host application. A stale AX element may still return success
+            // for AXPress without opening a menu, so never treat the element
+            // captured before the reveal as proof of activation.
+            if activateUsingFreshAccessibility(item) {
+                DiagnosticLog.shared.record("assessment.activation_complete", [
+                    "button": 1,
+                    "route": 1
+                ])
                 finishActivation()
                 return
             }
@@ -2279,7 +2284,10 @@ final class MenuBarItemStore: ObservableObject {
                     )
                     return
                 }
-                DiagnosticLog.shared.record("assessment.activation_complete", ["button": 1])
+                DiagnosticLog.shared.record("assessment.activation_complete", [
+                    "button": 1,
+                    "route": 2
+                ])
                 self.finishActivation()
             }
             return
