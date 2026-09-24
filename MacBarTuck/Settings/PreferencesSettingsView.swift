@@ -6,6 +6,7 @@ struct PreferencesSettingsView: View {
     @ObservedObject var launchAtLogin: LaunchAtLoginManager
     @ObservedObject var dockVisibility: DockVisibilityController
     @Binding var hoverRevealEnabled: Bool
+    @Binding var hoverRevealDelaySeconds: Double
     let showOnboarding: () -> Void
     @EnvironmentObject private var language: AppLanguageController
     @State private var confirmReset = false
@@ -21,6 +22,22 @@ struct PreferencesSettingsView: View {
                     ))
                     Toggle(language.text("preferences.hover"), isOn: $hoverRevealEnabled)
                         .help(language.text("preferences.hover.help"))
+                    HStack(spacing: 12) {
+                        Text(language.text("preferences.hover.delay"))
+                        Spacer()
+                        Slider(
+                            value: normalizedHoverRevealDelay,
+                            in: HoverRevealDelayController.minimumDelay...HoverRevealDelayController.maximumDelay,
+                            step: 0.5
+                        )
+                        .frame(width: 180)
+                        Text(language.text("preferences.hover.delay.value", normalizedDelayValue))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 58, alignment: .trailing)
+                    }
+                    .disabled(!hoverRevealEnabled)
+                    .help(language.text("preferences.hover.delay.help"))
                 }
                 Section(language.text("preferences.application.section")) {
                     Toggle(language.text("preferences.dock"), isOn: Binding(
@@ -100,6 +117,17 @@ struct PreferencesSettingsView: View {
             }
             .font(.system(size: 11)).padding(.horizontal, 20).frame(height: 36)
         }
+    }
+
+    private var normalizedDelayValue: Double {
+        HoverRevealDelayController.normalizedDelay(hoverRevealDelaySeconds)
+    }
+
+    private var normalizedHoverRevealDelay: Binding<Double> {
+        Binding(
+            get: { normalizedDelayValue },
+            set: { hoverRevealDelaySeconds = HoverRevealDelayController.normalizedDelay($0) }
+        )
     }
 
     private func exportDiagnostics() {

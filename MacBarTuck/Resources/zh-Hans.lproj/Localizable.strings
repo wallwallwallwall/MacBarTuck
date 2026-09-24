@@ -20,7 +20,10 @@
 "preferences.menubar.section" = "菜单栏";
 "preferences.notch" = "自动避让刘海";
 "preferences.hover" = "悬停时展开";
-"preferences.hover.help" = "默认关闭；开启后移入菜单栏可展开托盘，布局调整期间会自动暂停。";
+"preferences.hover.help" = "默认关闭；开启后需在菜单栏停留一段时间才会展开托盘。";
+"preferences.hover.delay" = "停留时间";
+"preferences.hover.delay.value" = "%.1f 秒";
+"preferences.hover.delay.help" = "鼠标持续停留达到此时间后才展开，短暂经过不会触发。";
 "preferences.application.section" = "应用";
 "preferences.dock" = "在程序坞中显示 MacBarTuck";
 "preferences.login" = "登录时打开 MacBarTuck";

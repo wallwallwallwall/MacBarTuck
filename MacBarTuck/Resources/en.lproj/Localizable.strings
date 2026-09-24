@@ -20,7 +20,10 @@
 "preferences.menubar.section" = "Menu Bar";
 "preferences.notch" = "Avoid the Notch Automatically";
 "preferences.hover" = "Reveal on Hover";
-"preferences.hover.help" = "Off by default. When enabled, moving into the menu bar opens the tray; it pauses during layout changes.";
+"preferences.hover.help" = "Off by default. When enabled, the pointer must dwell in the menu bar before the tray opens.";
+"preferences.hover.delay" = "Dwell Time";
+"preferences.hover.delay.value" = "%.1f sec";
+"preferences.hover.delay.help" = "The tray opens only after the pointer stays for this long; passing over the menu bar will not trigger it.";
 "preferences.application.section" = "Application";
 "preferences.dock" = "Show MacBarTuck in the Dock";
 "preferences.login" = "Open MacBarTuck at Login";

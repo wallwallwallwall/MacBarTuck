@@ -10,7 +10,10 @@ struct SettingsView: View {
     private let restartApplication: () -> Void
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
     @AppStorage("hoverRevealEnabled") private var hoverRevealEnabled = false
-    @State private var previewHoverEnabled = false
+    @AppStorage(HoverRevealDelayController.preferenceKey)
+    private var hoverRevealDelaySeconds = HoverRevealDelayController.defaultDelay
+    @State private var previewHoverEnabled = true
+    @State private var previewHoverDelaySeconds = HoverRevealDelayController.defaultDelay
     @State private var selectedTab: SettingsTab
 
     init(store: MenuBarItemStore, dockVisibility: DockVisibilityController,
@@ -25,34 +28,36 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 16) {
                 Picker(language.text("settings.page"), selection: $selectedTab) {
                     ForEach(SettingsTab.allCases) { tab in Text(tab.title(language)).tag(tab) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 340)
-                Spacer()
-                Button { selectedTab = .status } label: {
-                    Label(store.isUIPreviewMode ? language.text("settings.permission.example") : permissions.statusTitle,
-                          systemImage: permissions.isReady ? "checkmark.circle.fill" : "exclamationmark.circle")
-                        .foregroundStyle(permissions.isReady ? Color.green : Color.orange)
-                }
-                .buttonStyle(.plain).font(.system(size: 11))
-                .help(permissions.statusDetail)
-                Toggle(language.text("settings.collection.enabled"), isOn: Binding(
-                    get: { store.layoutManagementEnabled },
-                    set: { value in
-                        store.setLayoutManagementEnabled(value)
-                        if value && !store.isUIPreviewMode && !permissions.isReady { selectedTab = .status }
+                .frame(width: 400)
+                Spacer(minLength: 12)
+                VStack(alignment: .trailing, spacing: 6) {
+                    Button { selectedTab = .status } label: {
+                        Label(store.isUIPreviewMode ? language.text("settings.permission.example") : permissions.statusTitle,
+                              systemImage: permissions.isReady ? "checkmark.circle.fill" : "exclamationmark.circle")
+                            .foregroundStyle(permissions.isReady ? Color.green : Color.orange)
                     }
-                ))
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .help(language.text("settings.collection.help"))
+                    .buttonStyle(.plain).font(.system(size: 11))
+                    .help(permissions.statusDetail)
+                    Toggle(language.text("settings.collection.enabled"), isOn: Binding(
+                        get: { store.layoutManagementEnabled },
+                        set: { value in
+                            store.setLayoutManagementEnabled(value)
+                            if value && !store.isUIPreviewMode && !permissions.isReady { selectedTab = .status }
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .help(language.text("settings.collection.help"))
+                }
             }
             .padding(.horizontal, 20)
-            .frame(height: 52)
+            .frame(height: 72)
             Divider()
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -94,6 +99,7 @@ struct SettingsView: View {
         case .preferences:
             PreferencesSettingsView(store: store, launchAtLogin: launchAtLogin, dockVisibility: dockVisibility,
                 hoverRevealEnabled: store.isUIPreviewMode ? $previewHoverEnabled : $hoverRevealEnabled,
+                hoverRevealDelaySeconds: store.isUIPreviewMode ? $previewHoverDelaySeconds : $hoverRevealDelaySeconds,
                 showOnboarding: showOnboarding)
         case .status:
             StatusSettingsView(store: store, permissions: permissions, restartApplication: restartApplication)

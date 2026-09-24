@@ -84,6 +84,9 @@ private enum LocalizationTests {
             "panel.retuck.count",
             "panel.temporary.help",
             "preferences.hover.help",
+            "preferences.hover.delay",
+            "preferences.hover.delay.value",
+            "preferences.hover.delay.help",
             "store.activation.retuck_progress",
             "store.layout.changes_pending"
         ] {

@@ -35,6 +35,7 @@ private enum MenuBarRuntimeTests {
         try separatorStates()
         try nativeOverflowPlanning()
         try interactionPolicy()
+        try hoverRevealDelayScheduling()
         try platformPolicies()
         try displayBoundsResolution()
         try maskOverlayPlanning()
@@ -308,6 +309,43 @@ private enum MenuBarRuntimeTests {
             ),
             "An idle background layout must remain eligible to run."
         )
+    }
+
+    private static func hoverRevealDelayScheduling() throws {
+        let scheduler = HoverRevealSchedulerProbe()
+        let controller = HoverRevealDelayController(schedule: scheduler.schedule)
+        var revealCount = 0
+
+        controller.schedule(after: 2.0) { revealCount += 1 }
+        try expect(scheduler.tasks.map(\.delay) == [2.0],
+                   "Hover reveal must wait for the configured delay.")
+        try expect(controller.hasPendingReveal,
+                   "Hover reveal must report a pending dwell while the pointer remains in the menu bar.")
+        scheduler.fireTask(at: 0)
+        try expect(revealCount == 1 && !controller.hasPendingReveal,
+                   "A completed dwell must reveal exactly once and clear its pending state.")
+
+        controller.schedule(after: 1.5) { revealCount += 1 }
+        controller.cancel()
+        scheduler.fireTask(at: 1)
+        try expect(revealCount == 1,
+                   "Leaving the menu bar before the delay expires must cancel the reveal.")
+
+        controller.schedule(after: 1.5) { revealCount += 1 }
+        controller.schedule(after: 0.75) { revealCount += 1 }
+        try expect(scheduler.tasks[2].isCancelled,
+                   "Starting a new hover dwell must cancel the previous pending reveal.")
+        scheduler.fireTask(at: 2)
+        scheduler.fireTask(at: 3)
+        try expect(revealCount == 2,
+                   "Repeated hover entries must keep only the most recent scheduled reveal.")
+
+        try expect(HoverRevealDelayController.normalizedDelay(-1) == 0.5,
+                   "Hover delay must not be shorter than half a second.")
+        try expect(HoverRevealDelayController.normalizedDelay(9) == 5.0,
+                   "Hover delay must not exceed five seconds.")
+        try expect(HoverRevealDelayController.normalizedDelay(.nan) == 1.5,
+                   "Invalid hover delay values must use the default delay.")
     }
 
     private static func platformPolicies() throws {
@@ -611,5 +649,31 @@ private enum MenuBarRuntimeTests {
 
     private static func expect(_ condition: Bool, _ message: String) throws {
         if !condition { throw TestFailure(description: message) }
+    }
+}
+
+private final class HoverRevealSchedulerProbe {
+    final class Task {
+        let delay: TimeInterval
+        let action: () -> Void
+        var isCancelled = false
+
+        init(delay: TimeInterval, action: @escaping () -> Void) {
+            self.delay = delay
+            self.action = action
+        }
+    }
+
+    private(set) var tasks: [Task] = []
+
+    func schedule(after delay: TimeInterval, action: @escaping () -> Void) -> () -> Void {
+        let task = Task(delay: delay, action: action)
+        tasks.append(task)
+        return { task.isCancelled = true }
+    }
+
+    func fireTask(at index: Int) {
+        let task = tasks[index]
+        if !task.isCancelled { task.action() }
     }
 }

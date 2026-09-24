@@ -15,6 +15,11 @@ final class StatusBarController: NSObject {
     private var hoverMonitor: Any?
     private var pointerIsAtMenuBar = false
     private var hoverRevealSuppressedUntilPointerLeaves = false
+    private let hoverRevealDelayController = HoverRevealDelayController { delay, action in
+        let workItem = DispatchWorkItem(block: action)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+        return { workItem.cancel() }
+    }
     private var hiddenSectionReflowWorkItem: DispatchWorkItem?
     private var requestedHiddenSectionLengths: [CGFloat]?
     private var isApplyingLayout = false
@@ -73,6 +78,7 @@ final class StatusBarController: NSObject {
             guard let self else { return }
             self.isApplyingLayout = applying
             if applying {
+                self.hoverRevealDelayController.cancel()
                 self.panelController.close()
                 self.hoverRevealSuppressedUntilPointerLeaves = true
             }
@@ -99,6 +105,7 @@ final class StatusBarController: NSObject {
             // mouseMoved for that event; keep the hover revealer dormant
             // until the pointer has actually left the menu bar, otherwise
             // the panel can reopen on top of the menu just opened.
+            self?.hoverRevealDelayController.cancel()
             self?.hoverRevealSuppressedUntilPointerLeaves = true
             self?.pointerIsAtMenuBar = true
         }
@@ -106,8 +113,18 @@ final class StatusBarController: NSObject {
         // This removes the old 250ms polling interval plus 120ms debounce, so
         // the panel starts its animation on the first movement into the menu
         // bar while remaining passive for all other applications.
-        hoverMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            DispatchQueue.main.async { [weak self] in self?.handleHoverPointer() }
+        hoverMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            let isMouseMove = event.type == .mouseMoved
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if isMouseMove {
+                    self.handleHoverPointer()
+                } else {
+                    self.cancelHoverRevealForPointerAction()
+                }
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self, let button = self.statusItem.button else { return }
@@ -146,16 +163,14 @@ final class StatusBarController: NSObject {
     }
 
     deinit {
+        hoverRevealDelayController.cancel()
         if let hoverMonitor { NSEvent.removeMonitor(hoverMonitor) }
     }
 
     private func handleHoverPointer() {
-        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) else {
-            pointerIsAtMenuBar = false
-            return
-        }
-        let atMenuBar = NSEvent.mouseLocation.y >= screen.frame.maxY - NSStatusBar.system.thickness - 2
+        let atMenuBar = isPointerAtMenuBar
         if !atMenuBar {
+            hoverRevealDelayController.cancel()
             pointerIsAtMenuBar = false
             hoverRevealSuppressedUntilPointerLeaves = false
             return
@@ -165,16 +180,48 @@ final class StatusBarController: NSObject {
             isApplyingLayout: store.isInteractionBusy,
             isShowingContextMenu: isShowingContextMenu,
             isSuppressed: hoverRevealSuppressedUntilPointerLeaves
-        ) else { return }
+        ) else {
+            hoverRevealDelayController.cancel()
+            return
+        }
         guard atMenuBar != pointerIsAtMenuBar else { return }
         pointerIsAtMenuBar = atMenuBar
-        guard atMenuBar, let button = statusItem.button else { return }
+        guard atMenuBar else { return }
+        hoverRevealDelayController.schedule(after: hoverRevealDelaySeconds) { [weak self] in
+            self?.completeHoverReveal()
+        }
+    }
+
+    private func cancelHoverRevealForPointerAction() {
+        hoverRevealDelayController.cancel()
+        if isPointerAtMenuBar {
+            pointerIsAtMenuBar = true
+            hoverRevealSuppressedUntilPointerLeaves = true
+        }
+    }
+
+    private func completeHoverReveal() {
+        guard pointerIsAtMenuBar, isPointerAtMenuBar else { return }
+        guard MenuBarInteractionPolicy.allowsHoverReveal(
+            enabled: hoverRevealEnabled,
+            isApplyingLayout: store.isInteractionBusy,
+            isShowingContextMenu: isShowingContextMenu,
+            isSuppressed: hoverRevealSuppressedUntilPointerLeaves
+        ) else { return }
+        guard let button = statusItem.button else { return }
         storeControlItemFrame(for: button)
         panelController.show(relativeTo: button)
     }
 
+    private var isPointerAtMenuBar: Bool {
+        let location = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(location) }) else { return false }
+        return location.y >= screen.frame.maxY - NSStatusBar.system.thickness - 2
+    }
+
     func prepareForTermination() {
         isTerminating = true
+        hoverRevealDelayController.cancel()
         hiddenSectionReflowWorkItem?.cancel()
         hiddenSectionReflowWorkItem = nil
         let terminalLength = platformPolicy.usesHiddenSection
@@ -194,6 +241,7 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func togglePanel() {
+        hoverRevealDelayController.cancel()
         if NSApp.currentEvent?.type == .rightMouseUp || NSApp.currentEvent?.modifierFlags.contains(.control) == true {
             panelController.close()
             hoverRevealSuppressedUntilPointerLeaves = true
@@ -209,6 +257,7 @@ final class StatusBarController: NSObject {
     }
 
     func showPanel() {
+        hoverRevealDelayController.cancel()
         guard !store.isInteractionBusy, let button = statusItem.button else { return }
         storeControlItemFrame(for: button)
         panelController.show(relativeTo: button)
@@ -457,6 +506,16 @@ final class StatusBarController: NSObject {
 
     private var hoverRevealEnabled: Bool {
         UserDefaults.standard.bool(forKey: "hoverRevealEnabled")
+    }
+
+    private var hoverRevealDelaySeconds: TimeInterval {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: HoverRevealDelayController.preferenceKey) != nil else {
+            return HoverRevealDelayController.defaultDelay
+        }
+        return HoverRevealDelayController.normalizedDelay(
+            defaults.double(forKey: HoverRevealDelayController.preferenceKey)
+        )
     }
 
     private static func statusBarImage(language: AppLanguageController) -> NSImage? {
