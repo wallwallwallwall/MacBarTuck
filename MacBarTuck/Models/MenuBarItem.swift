@@ -127,8 +127,22 @@ final class MenuBarItem: Identifiable {
 
     var displayTitle: String { displayTitle(for: AppLanguageController.shared.selectedLanguage) }
 
+    private var dingTalkNotificationCount: String? {
+        guard !isProtectedSystemItem,
+              bundleIdentifier?.lowercased().hasSuffix("com.dingtalk.mac") == true else { return nil }
+        let value = (resolvedTitle ?? title).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.count <= 3,
+              value.utf8.allSatisfy({ (48...57).contains($0) }) else { return nil }
+        return value
+    }
+
+    var showsNotificationCountInTitle: Bool { dingTalkNotificationCount != nil }
+
     func displayTitle(for language: AppLanguage) -> String {
         let value = resolvedTitle ?? title
+        if let count = dingTalkNotificationCount {
+            return "\(displayOwnerName(for: language)) \(count)"
+        }
         let normalized = value.lowercased()
         if normalized.hasPrefix("unidentified item "),
            let index = Int(normalized.dropFirst("unidentified item ".count)) {
@@ -167,6 +181,7 @@ final class MenuBarItem: Identifiable {
 
     func tooltip(for language: AppLanguage) -> String {
         let title = displayTitle(for: language)
+        if showsNotificationCountInTitle { return title }
         let owner = displayOwnerName(for: language)
         return title.isEmpty ? owner : "\(owner) · \(title)"
     }

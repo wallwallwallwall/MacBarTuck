@@ -27,6 +27,7 @@ private enum MenuBarIdentityTests {
         try panelPositioning()
         try captureIdentity()
         try iconPresentation()
+        try dingTalkNotificationPresentation()
         try inputSourcePresentation()
         try applicationIdentityResolution()
         try macOS27AccessibilityDiscoveryBoundaries()
@@ -263,6 +264,34 @@ private enum MenuBarIdentityTests {
         )
         try expect(fallback.displayImage === captured,
                    "A third-party tray item without an application icon must fall back to its captured glyph.")
+    }
+
+    private static func dingTalkNotificationPresentation() throws {
+        let item = MenuBarItem(
+            id: "ding-talk", title: "1", ownerName: "钉钉",
+            bundleIdentifier: "5ZSL2CJU2T.com.dingtalk.mac", frame: .zero,
+            axElement: nil, isSelected: false, supportsPressAction: true
+        )
+        try expect(item.displayTitle(for: .simplifiedChinese) == "钉钉 1",
+                   "A DingTalk notification count must include the application name.")
+        try expect(item.tooltip(for: .simplifiedChinese) == "钉钉 1",
+                   "A notification count must not repeat the application name in its tooltip.")
+        try expect(item.showsNotificationCountInTitle,
+                   "The settings row must not repeat DingTalk as a subtitle.")
+        item.title = "12"
+        try expect(item.displayTitle(for: .simplifiedChinese) == "钉钉 12",
+                   "A changing notification count must update the label.")
+        item.title = "消息"
+        try expect(item.displayTitle(for: .simplifiedChinese) == "消息" && !item.showsNotificationCountInTitle,
+                   "A nonnumeric DingTalk status title must remain unchanged.")
+
+        let metric = MenuBarItem(
+            id: "metric", title: "1", ownerName: "iStat Menus",
+            bundleIdentifier: "com.bjango.istatmenus.status", frame: .zero,
+            axElement: nil, isSelected: false, supportsPressAction: true
+        )
+        try expect(metric.displayTitle(for: .english) == "1" && !metric.showsNotificationCountInTitle,
+                   "Numeric status titles from unrelated apps must not be treated as notifications.")
     }
 
     private static func inputSourcePresentation() throws {

@@ -29,18 +29,20 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
-                Picker(language.text("settings.page"), selection: $selectedTab) {
-                    ForEach(SettingsTab.allCases) { tab in Text(tab.title(language)).tag(tab) }
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable().scaledToFit().frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("MacBarTuck").font(.system(size: 18, weight: .semibold))
+                    Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                        .font(.system(size: 11)).foregroundStyle(MacBarTuckTheme.secondaryText)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 400)
                 Spacer(minLength: 12)
                 VStack(alignment: .trailing, spacing: 6) {
                     Button { selectedTab = .status } label: {
                         Label(store.isUIPreviewMode ? language.text("settings.permission.example") : permissions.statusTitle,
-                              systemImage: permissions.isReady ? "checkmark.circle.fill" : "exclamationmark.circle")
-                            .foregroundStyle(permissions.isReady ? Color.green : Color.orange)
+                              systemImage: store.isUIPreviewMode || permissions.isReady ? "checkmark.circle.fill" : "exclamationmark.circle")
+                            .foregroundStyle(store.isUIPreviewMode || permissions.isReady
+                                             ? MacBarTuckTheme.success : MacBarTuckTheme.retuckAction)
                     }
                     .buttonStyle(.plain).font(.system(size: 11))
                     .help(permissions.statusDetail)
@@ -52,16 +54,31 @@ struct SettingsView: View {
                         }
                     ))
                     .toggleStyle(.switch)
+                    .tint(MacBarTuckTheme.success)
                     .controlSize(.small)
                     .help(language.text("settings.collection.help"))
                 }
             }
             .padding(.horizontal, 20)
             .frame(height: 72)
+            .background(MacBarTuckTheme.chrome)
+            HStack {
+                Picker(language.text("settings.page"), selection: $selectedTab) {
+                    ForEach(SettingsTab.allCases) { tab in Text(tab.title(language)).tag(tab) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 550)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .frame(height: 44)
+            .background(MacBarTuckTheme.chrome)
             Divider()
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .font(.system(size: 13))
+        .foregroundStyle(MacBarTuckTheme.primaryText)
         .tint(MacBarTuckTheme.accent)
         .background(MacBarTuckTheme.canvas)
         .frame(minWidth: 760, minHeight: 560)

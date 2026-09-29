@@ -85,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let settingsWindowController { settingsWindowController.showWindow(nil) }
         else {
             let window = NSWindow(
-                contentRect: .init(x: 0, y: 0, width: 780, height: 580),
+                contentRect: .init(x: 0, y: 0, width: 820, height: 660),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
@@ -95,6 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.titleVisibility = .visible
             window.isMovableByWindowBackground = true
             window.appearance = NSAppearance(named: .darkAqua)
+            window.backgroundColor = NSColor(MacBarTuckTheme.chrome)
             window.contentMinSize = .init(width: 760, height: 560)
             let store = self.store
             let dockVisibility = self.dockVisibility
@@ -162,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.isMovableByWindowBackground = true
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: .darkAqua)
+            window.backgroundColor = NSColor(MacBarTuckTheme.chrome)
             window.contentMinSize = .init(width: 680, height: 500)
             let store = self.store
             let permissions = self.permissions

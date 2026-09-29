@@ -50,7 +50,8 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(step.title(language)).fontWeight(.medium)
+                Text("MacBarTuck").font(.system(size: 14, weight: .semibold))
+                Text(step.title(language)).foregroundStyle(MacBarTuckTheme.secondaryText)
                 Spacer()
                 Picker(language.text("preferences.language.label"), selection: Binding(
                     get: { language.selectedLanguage },
@@ -63,10 +64,9 @@ struct OnboardingView: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(width: 150)
-                ProgressView(value: Double(step.rawValue + 1), total: 4).frame(width: 110)
-                Text("\(step.rawValue + 1) / 4").foregroundStyle(.secondary).font(.caption)
             }
-            .padding(.horizontal, 24).frame(height: 48)
+            .padding(.horizontal, 24).frame(height: 56)
+            .background(MacBarTuckTheme.chrome)
             Divider()
             stepContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -76,18 +76,24 @@ struct OnboardingView: View {
             Divider()
             HStack {
                 if step != .welcome {
-                    Button(language.text("onboarding.previous")) { move(-1) }
+                    Button(language.text("onboarding.previous"), systemImage: "chevron.left") { move(-1) }
+                        .buttonStyle(.plain)
                 }
                 Spacer()
                 Button(step == .ready ? language.text("onboarding.finish") : language.text("onboarding.continue")) {
                     if step == .ready { onComplete(hideSelectedIcons) }
                     else { move(1) }
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
             }
-            .padding(.horizontal, 24).frame(height: 56)
+            .overlay { stepProgress }
+            .padding(.horizontal, 24).frame(height: 68)
+            .background(MacBarTuckTheme.chrome)
         }
         .font(.system(size: 13))
+        .foregroundStyle(MacBarTuckTheme.primaryText)
         .tint(MacBarTuckTheme.accent)
         .background(MacBarTuckTheme.canvas)
         .frame(minWidth: 680, minHeight: 500)
@@ -111,8 +117,8 @@ struct OnboardingView: View {
         switch step {
         case .welcome:
             VStack(spacing: 20) {
-                Image(nsImage: NSApp.applicationIconImage).resizable().scaledToFit().frame(width: 80, height: 80)
-                Text(language.text("onboarding.welcome.title")).font(.system(size: 22, weight: .medium))
+                Image(nsImage: NSApp.applicationIconImage).resizable().scaledToFit().frame(width: 148, height: 148)
+                Text("MacBarTuck").font(.system(size: 26, weight: .semibold))
             }
         case .permissions:
             VStack(alignment: .leading, spacing: 24) {
@@ -128,23 +134,25 @@ struct OnboardingView: View {
         case .customize:
             VStack(alignment: .leading, spacing: 26) {
                 Text(language.text("onboarding.step.preferences")).font(.system(size: 20, weight: .medium))
-                Toggle(language.text("preferences.login"), isOn: Binding(
+                MacBarTuckPreferenceToggle(title: language.text("preferences.login"), isOn: Binding(
                     get: { store.isUIPreviewMode ? previewLoginEnabled : launchAtLogin.isEnabled },
                     set: { value in
                         if store.isUIPreviewMode { previewLoginEnabled = value }
                         else { launchAtLogin.setEnabled(value) }
                     }
                 ))
-                Toggle(language.text("onboarding.enable_collection"), isOn: $hideSelectedIcons)
+                MacBarTuckPreferenceToggle(title: language.text("onboarding.enable_collection"), isOn: $hideSelectedIcons)
                 if let error = launchAtLogin.errorMessage {
                     Text(error).foregroundStyle(.red).font(.caption)
                 }
             }
-            .toggleStyle(.checkbox).frame(maxWidth: 470)
+            .frame(maxWidth: 470)
         case .ready:
             VStack(spacing: 24) {
                 Image(systemName: accessibilityGranted && recordingGranted ? "checkmark.circle" : "clock")
-                    .font(.system(size: 36)).foregroundStyle(.secondary)
+                    .font(.system(size: 52))
+                    .foregroundStyle(accessibilityGranted && recordingGranted
+                                     ? MacBarTuckTheme.success : MacBarTuckTheme.retuckAction)
                 Text(accessibilityGranted && recordingGranted
                      ? language.text("onboarding.setup_complete")
                      : language.text("onboarding.setup_saved"))
@@ -159,14 +167,30 @@ struct OnboardingView: View {
         }
     }
 
+    private var stepProgress: some View {
+        HStack(spacing: 8) {
+            ForEach(Step.allCases, id: \.rawValue) { value in
+                Circle()
+                    .fill(value == step ? MacBarTuckTheme.accent : MacBarTuckTheme.strongStroke)
+                    .frame(width: 7, height: 7)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(step.title(language))
+        .accessibilityValue("\(step.rawValue + 1) / 4")
+        .allowsHitTesting(false)
+    }
+
     private func permissionRow(_ title: String, symbol: String, granted: Bool,
                                action: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: symbol).frame(width: 24).foregroundStyle(.secondary)
+            Image(systemName: symbol).font(.system(size: 22)).frame(width: 30)
+                .foregroundStyle(granted ? MacBarTuckTheme.success : MacBarTuckTheme.retuckAction)
             Text(title)
             Spacer()
             if granted {
-                Label(language.text("onboarding.allowed"), systemImage: "checkmark").foregroundStyle(.secondary)
+                Label(language.text("onboarding.allowed"), systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(MacBarTuckTheme.success)
             } else {
                 Button(language.text("onboarding.open_settings"), action: action)
                     .accessibilityLabel(language.text("onboarding.open_settings.label", title))

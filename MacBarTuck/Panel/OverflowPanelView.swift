@@ -45,11 +45,11 @@ struct OverflowPanelView: View {
         HStack(spacing: 5) {
             Label(language.text("panel.tucked.count", tuckedItemCount), systemImage: "rectangle.stack.fill")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(MacBarTuckTheme.accentStrong)
+                .foregroundStyle(MacBarTuckTheme.success)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
                 .frame(width: Self.summaryWidth, height: 32)
-                .background(MacBarTuckTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(MacBarTuckTheme.success.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .help(language.text("panel.help"))
                 .accessibilityLabel(language.text("panel.tucked.count", tuckedItemCount))
 

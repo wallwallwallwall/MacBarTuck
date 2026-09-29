@@ -7,84 +7,125 @@ struct StatusSettingsView: View {
     @EnvironmentObject private var language: AppLanguageController
 
     var body: some View {
-        Form {
-            Section(language.text("permissions.section")) {
-                permissionRow(language.text("permissions.accessibility"), symbol: "accessibility",
-                              granted: store.isUIPreviewMode || permissions.accessibilityGranted,
-                              previouslyEffective: permissions.accessibilityWasPreviouslyEffective,
-                              action: permissions.requestAccessibility)
-                permissionRow(language.text("permissions.screen_recording"), symbol: "rectangle.inset.filled.and.person.filled",
-                              granted: store.isUIPreviewMode || permissions.screenRecordingGranted,
-                              previouslyEffective: permissions.screenWasPreviouslyEffective,
-                              action: permissions.requestScreenRecording)
-                HStack {
-                    Button(language.text("permissions.recheck"), systemImage: "arrow.clockwise") {
-                        permissions.refresh()
-                        store.refresh()
-                    }
-                    Spacer()
-                    if let checked = permissions.lastChecked {
-                        Text(language.text("permissions.checked_at", checked.formatted(
-                            .dateTime.hour().minute().second().locale(language.selectedLanguage.locale)
-                        )))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            if !permissions.isReady && !store.isUIPreviewMode {
-                Section(language.text("permissions.not_effective.section")) {
-                    Text(permissions.screenRestartSuggested
-                        ? language.text("permissions.restart.screen")
-                        : language.text("permissions.restart.general"))
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                MacBarTuckSettingsSection(
+                    title: language.text("permissions.section"),
+                    symbol: "lock.shield", tint: MacBarTuckTheme.success
+                ) {
+                    permissionRow(
+                        language.text("permissions.accessibility"), symbol: "accessibility",
+                        granted: store.isUIPreviewMode || permissions.accessibilityGranted,
+                        previouslyEffective: permissions.accessibilityWasPreviouslyEffective,
+                        action: permissions.requestAccessibility)
+                    permissionRow(
+                        language.text("permissions.screen_recording"),
+                        symbol: "rectangle.inset.filled.and.person.filled",
+                        granted: store.isUIPreviewMode || permissions.screenRecordingGranted,
+                        previouslyEffective: permissions.screenWasPreviouslyEffective,
+                        action: permissions.requestScreenRecording)
                     HStack {
-                        Button(language.text("permissions.restart.button"), action: restartApplication)
-                        Button(language.text("permissions.locate_app")) {
-                            NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
-                        }
-                    }
-                    if permissions.isAdHocSigned {
-                        Text(language.text("permissions.adhoc_note"))
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    HStack {
-                        Button(language.text("permissions.accessibility.settings"), action: permissions.openAccessibilitySettings)
-                        Button(language.text("permissions.screen_recording.settings"), action: permissions.openScreenRecordingSettings)
-                    }
-                }
-            }
-            Section(language.text("permissions.displays.section")) {
-                ForEach(store.displays) { display in
-                    HStack(spacing: 12) {
-                        Image(systemName: display.hasNotch ? "macbook" : "display")
-                            .font(.system(size: 19)).foregroundStyle(.secondary).frame(width: 28)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(display.displayName(for: language))
-                            Text(display.resolutionLabel).font(.system(size: 11)).foregroundStyle(.secondary)
+                        Button(language.text("permissions.recheck"), systemImage: "arrow.clockwise") {
+                            permissions.refresh()
+                            store.refresh()
                         }
                         Spacer()
-                        Text(display.isMain ? language.text("permissions.display.main") : language.text("permissions.display.extended"))
-                            .foregroundStyle(.secondary)
-                    }.padding(.vertical, 4)
+                        if let checked = permissions.lastChecked {
+                            Text(
+                                language.text(
+                                    "permissions.checked_at",
+                                    checked.formatted(
+                                        .dateTime.hour().minute().second().locale(language.selectedLanguage.locale)
+                                    ))
+                            )
+                            .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if !permissions.isReady && !store.isUIPreviewMode {
+                    MacBarTuckSettingsSection(
+                        title: language.text("permissions.not_effective.section"),
+                        symbol: "exclamationmark.circle", tint: MacBarTuckTheme.retuckAction
+                    ) {
+                        Text(
+                            permissions.screenRestartSuggested
+                                ? language.text("permissions.restart.screen")
+                                : language.text("permissions.restart.general")
+                        )
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        HStack {
+                            Button(language.text("permissions.restart.button"), action: restartApplication)
+                            Button(language.text("permissions.locate_app")) {
+                                NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+                            }
+                        }
+                        if permissions.isAdHocSigned {
+                            Text(language.text("permissions.adhoc_note"))
+                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        HStack {
+                            Button(
+                                language.text("permissions.accessibility.settings"),
+                                action: permissions.openAccessibilitySettings)
+                            Button(
+                                language.text("permissions.screen_recording.settings"),
+                                action: permissions.openScreenRecordingSettings)
+                        }
+                    }
+                }
+                MacBarTuckSettingsSection(
+                    title: language.text("permissions.displays.section"),
+                    symbol: "display.2", tint: MacBarTuckTheme.accent
+                ) {
+                    ForEach(store.displays) { display in
+                        HStack(spacing: 12) {
+                            Image(systemName: display.hasNotch ? "macbook" : "display")
+                                .font(.system(size: 23)).foregroundStyle(MacBarTuckTheme.accent).frame(width: 34)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(display.displayName(for: language))
+                                Text(display.resolutionLabel).font(.system(size: 11)).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(
+                                display.isMain
+                                    ? language.text("permissions.display.main")
+                                    : language.text("permissions.display.extended")
+                            )
+                            .foregroundStyle(display.isMain ? MacBarTuckTheme.success : MacBarTuckTheme.accent)
+                        }.padding(.vertical, 4)
+                    }
                 }
             }
+            .padding(22)
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
         }
-        .formStyle(.grouped)
         .controlSize(.small)
     }
 
-    private func permissionRow(_ title: String, symbol: String, granted: Bool, previouslyEffective: Bool,
-                               action: @escaping () -> Void) -> some View {
+    private func permissionRow(
+        _ title: String, symbol: String, granted: Bool, previouslyEffective: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 28)
+            Image(systemName: symbol)
+                .font(.system(size: 21))
+                .foregroundStyle(granted ? MacBarTuckTheme.success : MacBarTuckTheme.retuckAction)
+                .frame(width: 34)
             Text(title)
             Spacer()
-            Label(granted
-                  ? (store.isUIPreviewMode ? language.text("permissions.status.preview_effective") : language.text("permissions.status.effective"))
-                  : (previouslyEffective ? language.text("permissions.status.previous") : language.text("permissions.status.not_effective")),
-                  systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.circle")
-                .foregroundStyle(granted ? Color.green : Color.orange)
+            Label(
+                granted
+                    ? (store.isUIPreviewMode
+                        ? language.text("permissions.status.preview_effective")
+                        : language.text("permissions.status.effective"))
+                    : (previouslyEffective
+                        ? language.text("permissions.status.previous")
+                        : language.text("permissions.status.not_effective")),
+                systemImage: granted ? "checkmark.circle.fill" : "exclamationmark.circle"
+            )
+            .foregroundStyle(granted ? MacBarTuckTheme.success : MacBarTuckTheme.retuckAction)
             if granted {
                 EmptyView()
             } else {

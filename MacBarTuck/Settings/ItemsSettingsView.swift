@@ -22,13 +22,15 @@ struct ItemsSettingsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField(language.text("items.search"), text: $query).textFieldStyle(.plain)
+                        .accessibilityLabel(language.text("items.search"))
                     Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
                         .opacity(query.isEmpty ? 0 : 1).disabled(query.isEmpty)
                         .help(language.text("items.search.clear")).accessibilityLabel(language.text("items.search.clear"))
                 }
-                .padding(.horizontal, 8).frame(width: 260, height: 28)
-                .background(MacBarTuckTheme.deepSurface, in: RoundedRectangle(cornerRadius: 5))
+                .padding(.horizontal, 10).frame(width: 260, height: 32)
+                .background(MacBarTuckTheme.deepSurface, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(MacBarTuckTheme.stroke))
                 Spacer()
                 Button {
                     store.applyLayout()
@@ -56,7 +58,7 @@ struct ItemsSettingsView: View {
                 .frame(width: 28, height: 28)
                 .help(language.text("items.more")).accessibilityLabel(language.text("items.more"))
             }
-            .padding(.horizontal, 20).frame(height: 52)
+            .padding(.horizontal, 20).frame(height: 58)
 
             if store.requiresScreenRecording {
                 emptyState(language.text("items.recording_required"), symbol: "lock.shield") {
@@ -70,14 +72,21 @@ struct ItemsSettingsView: View {
                 Table(filteredItems) {
                     TableColumn(language.text("items.column.item")) { item in
                         HStack(spacing: 10) {
-                            MenuItemIconView(item: item, size: 20).frame(width: 28)
-                            Text(item.displayTitle(for: language.selectedLanguage)).lineLimit(1)
+                            MenuItemIconView(item: item, size: 28, prefersApplicationIcon: true).frame(width: 34)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.displayTitle(for: language.selectedLanguage)).lineLimit(1)
+                                if !item.showsNotificationCountInTitle &&
+                                    item.displayOwnerName(for: language.selectedLanguage) != item.displayTitle(for: language.selectedLanguage) {
+                                    Text(item.displayOwnerName(for: language.selectedLanguage))
+                                        .font(.system(size: 11)).foregroundStyle(MacBarTuckTheme.secondaryText).lineLimit(1)
+                                }
+                            }
                             if item.windowID != nil && item.iconImage == nil {
                                 Image(systemName: "clock").foregroundStyle(.secondary)
                                     .help(language.text("items.icon.pending"))
                             }
                         }
-                        .frame(height: 34)
+                        .frame(height: 48)
                         .help(item.tooltip(for: language.selectedLanguage))
                     }
                     TableColumn(language.text("items.column.mode")) { item in
@@ -96,11 +105,13 @@ struct ItemsSettingsView: View {
                         }
                     }.width(150)
                     TableColumn(language.text("items.column.status")) { item in
-                        Text(store.visibilityDescription(for: item))
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                    }.width(104)
+                        Label(store.visibilityDescription(for: item), systemImage: statusSymbol(for: item))
+                            .font(.system(size: 11)).foregroundStyle(statusColor(for: item))
+                            .lineLimit(2)
+                    }.width(168)
                 }
-                .tableStyle(.inset(alternatesRowBackgrounds: true))
+                .tableStyle(.inset(alternatesRowBackgrounds: false))
+                .scrollContentBackground(.hidden)
             }
             Divider()
             HStack {
@@ -115,8 +126,23 @@ struct ItemsSettingsView: View {
                 }
             }
             .font(.system(size: 11)).foregroundStyle(.secondary)
-            .padding(.horizontal, 20).frame(height: 30)
+            .padding(.horizontal, 20).frame(height: 34)
+            .background(MacBarTuckTheme.chrome)
         }
+    }
+
+    private func statusColor(for item: MenuBarItem) -> Color {
+        if store.isTemporarilyVisible(item) { return MacBarTuckTheme.retuckAction }
+        if item.visibility == .hidden { return MacBarTuckTheme.collected }
+        if item.visibility == .visible && !item.isSelected { return MacBarTuckTheme.success }
+        return MacBarTuckTheme.secondaryText
+    }
+
+    private func statusSymbol(for item: MenuBarItem) -> String {
+        if store.isTemporarilyVisible(item) { return "clock" }
+        if item.visibility == .hidden { return "tray.fill" }
+        if item.visibility == .visible && !item.isSelected { return "eye" }
+        return "ellipsis.circle"
     }
 
     private func emptyState<Actions: View>(_ title: String, symbol: String,

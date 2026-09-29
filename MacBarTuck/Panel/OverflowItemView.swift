@@ -44,7 +44,7 @@ struct OverflowItemView: View {
         .overlay(alignment: .bottomTrailing) {
             if isTemporarilyVisible {
                 Circle()
-                    .fill(MacBarTuckTheme.accentStrong)
+                    .fill(MacBarTuckTheme.retuckAction)
                     .frame(width: 6, height: 6)
                     .overlay(Circle().stroke(MacBarTuckTheme.deepSurface, lineWidth: 1))
                     .offset(x: -5, y: -5)
