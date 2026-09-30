@@ -8,6 +8,7 @@ final class MenuBarItemStore: ObservableObject {
     let permissions: PermissionManager
     let language: AppLanguageController
     @Published private(set) var items: [MenuBarItem] = []
+    @Published private(set) var favoriteItemIDs = Set<String>()
     @Published var lastActivationError: String?
     @Published private(set) var activatingItemID: String?
     @Published private(set) var layoutManagementEnabled = false
@@ -129,6 +130,7 @@ final class MenuBarItemStore: ObservableObject {
         self.language = language
         self.permissions = permissions ?? PermissionManager(language: language)
         self.preferences = preferences
+        favoriteItemIDs = preferences.favoriteItemIDs
         self.scanner = scanner
         self.platformPolicy = platformPolicy
         self.assessmentModeManager = assessmentModeManager ?? MenuBarAssessmentModeController()
@@ -180,11 +182,32 @@ final class MenuBarItemStore: ObservableObject {
 
     /// Rule selection is intent, not evidence that a window was hidden.
     var overflowItems: [MenuBarItem] {
-        return items
+        let tuckedItems = items
             .filter {
                 ($0.visibility == .hidden || temporarilyVisibleItemIDs.contains($0.id)) &&
                     !$0.isAlwaysVisibleSystemItem
             }
+        return MenuBarItemCollection.favoritesFirst(tuckedItems, favoriteIDs: favoriteItemIDs)
+    }
+
+    func isFavorite(_ item: MenuBarItem) -> Bool {
+        MenuBarItemCollection.isFavorite(item, favoriteIDs: favoriteItemIDs)
+    }
+
+    func toggleFavorite(_ item: MenuBarItem) {
+        guard items.contains(where: { $0.id == item.id }) else { return }
+        if isFavorite(item) {
+            favoriteItemIDs.subtract(item.legacyIDs.union([item.id]))
+        } else {
+            favoriteItemIDs.insert(item.id)
+        }
+        if !isUIPreviewMode { preferences.favoriteItemIDs = favoriteItemIDs }
+    }
+
+    func filteredItems(filter: MenuBarItemFilter, query: String = "") -> [MenuBarItem] {
+        MenuBarItemCollection.filtered(items, filter: filter, query: query,
+            favoriteIDs: favoriteItemIDs, temporaryIDs: temporarilyVisibleItemIDs,
+            language: language.selectedLanguage)
     }
 
     var temporarilyVisibleItems: [MenuBarItem] {
@@ -2113,6 +2136,7 @@ final class MenuBarItemStore: ObservableObject {
         }
         for item in items { item.visibility = item.isSelected ? .hidden : .visible }
         temporarilyVisibleItemIDs = ["preview-window"]
+        favoriteItemIDs = ["preview-vpn"]
         items.first(where: { $0.id == "preview-window" })?.visibility = .visible
         layoutManagementEnabled = true
         automaticAvoidanceEnabled = true

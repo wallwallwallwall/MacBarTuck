@@ -3,6 +3,7 @@ import SwiftUI
 struct OverflowItemView: View {
     let item: MenuBarItem
     let isTemporarilyVisible: Bool
+    let isFavorite: Bool
     let action: () -> Void
     let rightAction: () -> Void
 
@@ -41,6 +42,15 @@ struct OverflowItemView: View {
             }
         }
         .buttonStyle(OverflowItemButtonStyle(reduceMotion: reduceMotion))
+        .overlay(alignment: .topLeading) {
+            if isFavorite {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(MacBarTuckTheme.retuckAction)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             if isTemporarilyVisible {
                 Circle()

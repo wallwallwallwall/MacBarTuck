@@ -24,6 +24,7 @@ private enum MenuBarIdentityTests {
         try expect(activator.visiblePoint(for: removed) == nil, "A disappeared item must never click a neighboring Control Center window.")
         try mirrorBoundaries()
         try rulePersistence()
+        try favoriteFiltering()
         try panelPositioning()
         try captureIdentity()
         try iconPresentation()
@@ -167,6 +168,62 @@ private enum MenuBarIdentityTests {
         try expect(!preferences.hasCompletedOnboarding, "An explicit onboarding reset must override old completion markers.")
         preferences.hasCompletedOnboarding = true
         try expect(preferences.hasCompletedOnboarding, "New onboarding completion must persist.")
+    }
+
+    private static func favoriteFiltering() throws {
+        func item(_ id: String, _ title: String, _ visibility: MenuItemVisibility) -> MenuBarItem {
+            let item = MenuBarItem(id: id, title: title, ownerName: "Notes",
+                bundleIdentifier: "com.example.notes", frame: .zero,
+                axElement: nil, isSelected: true, supportsPressAction: false)
+            item.visibility = visibility
+            return item
+        }
+        let hidden = item("hidden", "Clipboard", .hidden)
+        let temporary = item("temporary", "输入法", .hidden)
+        let pending = item("pending", "Pending", .visible)
+        let unknown = item("unknown", "Unknown", .unknown)
+        let partial = item("partial", "Partial", .partial)
+        let items = [hidden, temporary, pending, unknown, partial]
+        let favorites: Set<String> = [temporary.id, partial.id, "missing-app"]
+        func matches(_ filter: MenuBarItemFilter, _ query: String = "") -> [String] {
+            MenuBarItemCollection.filtered(items, filter: filter, query: query,
+                favoriteIDs: favorites, temporaryIDs: [temporary.id], language: .simplifiedChinese).map(\.id)
+        }
+        try expect(matches(.all) == items.map(\.id), "All must retain menu order.")
+        try expect(matches(.favorites) == [temporary.id, partial.id], "Favorites must not create missing app rows.")
+        try expect(matches(.tucked) == [hidden.id], "Tucked must exclude temporary, pending and unconfirmed items.")
+        try expect(matches(.temporary) == [temporary.id], "Temporary must follow the explicit reveal state.")
+        try expect(matches(.favorites, "  输入  ") == [temporary.id], "Chinese search must combine with filters and trim whitespace.")
+        try expect(matches(.tucked, "CLIP") == [hidden.id], "English search must ignore case.")
+        try expect(matches(.tucked, "notes") == [hidden.id], "Search must match the owning application.")
+        try expect(matches(.temporary, "clipboard").isEmpty, "Search must not escape the selected filter.")
+        try expect(matches(.all, "\n ") == items.map(\.id), "Whitespace must not hide all rows.")
+        try expect(matches(.all, "not-present").isEmpty, "Unknown text must produce an empty result.")
+        let expectedOrder = [temporary.id, partial.id, hidden.id, pending.id, unknown.id]
+        try expect(MenuBarItemCollection.favoritesFirst(items, favoriteIDs: favorites).map(\.id) == expectedOrder,
+                   "Favorites and regular items must both preserve their original relative order.")
+        temporary.title = "99+"
+        try expect(MenuBarItemCollection.favoritesFirst(items, favoriteIDs: favorites).map(\.id) == expectedOrder,
+                   "Notification changes must not reorder tray icons.")
+        hidden.legacyIDs = ["legacy-hidden"]
+        try expect(MenuBarItemCollection.isFavorite(hidden, favoriteIDs: ["legacy-hidden"]),
+                   "Favorites must survive a known item identity migration.")
+        try expect(MenuBarItemCollection.favoritesFirst([], favoriteIDs: favorites).isEmpty,
+                   "Favorites must not synthesize entries in an empty tray.")
+
+        let domain = "FavoritePersistenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let preferences = PreferencesStore(defaults: defaults)
+        try expect(preferences.favoriteItemIDs.isEmpty, "New installations must start without favorites.")
+        preferences.favoriteItemIDs = favorites
+        try expect(PreferencesStore(defaults: defaults).favoriteItemIDs == favorites,
+                   "Favorites must survive a new preferences instance.")
+        preferences.resetLayoutState()
+        try expect(preferences.favoriteItemIDs == favorites, "Layout reset must preserve personal favorites.")
+        preferences.favoriteItemIDs = []
+        try expect(PreferencesStore(defaults: defaults).favoriteItemIDs.isEmpty,
+                   "Removing the final favorite must persist an empty set.")
     }
 
     private static func panelPositioning() throws {

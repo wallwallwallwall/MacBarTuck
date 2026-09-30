@@ -29,3 +29,7 @@
 ## 0.1.2 本地适配
 
 已有 MIT 基础没有提供可直接复用的跨屏逻辑项目身份接口，因此按本机 WindowServer 采样补充最小关联层：必须存在本应用的对应菜单栏入口，且托管进程、相对位置、宽度及明确标题一致，才能关联跨屏窗口。歧义不合并；保留全部底层窗口用于定向点击。这是经过本机采样与回归测试的适配策略，不是 Apple 提供的稳定镜像 ID 契约。
+
+## 0.1.29 常用与筛选
+
+2026-10-01 核验 Apple 的 [SegmentedPickerStyle](https://developer.apple.com/documentation/swiftui/segmentedpickerstyle) 官方资料，其 macOS 最低版本为 10.15，覆盖本项目 macOS 15 起的部署目标。复用 SwiftUI 原生 Picker、Table、Button 和 SF Symbols 星标，沿用仓库现有主题，不引入外部 UI 包或素材。收藏使用已有 UserDefaults 持久化方式及项目身份；托盘按常用和普通两组稳定分区，不重新排列系统菜单栏。状态筛选复用实际可见性和临时展开状态。

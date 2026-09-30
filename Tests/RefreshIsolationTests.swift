@@ -115,6 +115,7 @@ private final class RefreshAssessmentManager: MenuBarAssessmentModeManaging {
 enum RefreshIsolationTests {
     static func main() async throws {
         _ = NSApplication.shared
+        try await favoriteItemsDoNotChangeLayout()
         try duplicateItemIDsAreNormalized()
         try await assessmentModeStoreLifecycle()
         try await failedAssessmentModeApplyDoesNotPublishHiddenState()
@@ -407,6 +408,69 @@ enum RefreshIsolationTests {
                 userInfo: [NSLocalizedDescriptionKey:
                     "Duplicate scan IDs were not normalized without replacing the first item."]
             )
+        }
+    }
+
+    private static func favoriteItemsDoNotChangeLayout() async throws {
+        let domain = "FavoriteItemTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let preferences = PreferencesStore(defaults: defaults)
+        preferences.hasCompletedOnboarding = true
+        preferences.layoutManagementEnabled = false
+        let policy = MenuBarPlatformPolicy(majorVersion: 26)
+        let scanner = MenuBarScanner(
+            readWindows: {
+                (0..<3).map { index in
+                    [kCGWindowLayer as String: 25,
+                     kCGWindowNumber as String: 3_100_000_000 + index,
+                     kCGWindowOwnerPID as String: -1,
+                     kCGWindowOwnerName as String: "com.example.favorite\(index)",
+                     kCGWindowName as String: "Utility \(index)",
+                     kCGWindowBounds as String: ["X": 900 + index * 40, "Y": 0,
+                                                  "Width": 30, "Height": 30]]
+                }
+            },
+            readDisplayBounds: { [CGRect(x: 0, y: 0, width: 1512, height: 982)] },
+            ownBundleIdentifier: "com.bartuck.tests", platformPolicy: policy
+        )
+        let seeds = scanner.scan(selectedIDs: [])
+        let favoriteID = seeds.last!.id
+        defaults.set([favoriteID], forKey: "favoriteMenuBarItemsV1")
+        let permissions = PermissionManager(accessibilityStatus: { true }, accessibilityRequest: {},
+            screenCaptureStatus: { true }, screenCaptureRequest: { true }, openSettings: { _ in }, history: nil)
+        let store = MenuBarItemStore(permissions: permissions, preferences: preferences, scanner: scanner,
+            captureOverride: { _ in [:] }, platformPolicy: policy, visibilityOverride: { _ in .hidden })
+        store.refresh()
+        guard await waitUntil({ store.items.count == 3 }) else {
+            throw NSError(domain: "RefreshIsolation", code: 99,
+                userInfo: [NSLocalizedDescriptionKey: "The favorite fixture did not discover its items."])
+        }
+        store.items.forEach { $0.visibility = .hidden }
+        guard store.overflowItems.first?.id == favoriteID,
+              store.items.map(\.id) == seeds.map(\.id),
+              preferences.itemRules.isEmpty,
+              !store.isInteractionBusy else {
+            throw NSError(domain: "RefreshIsolation", code: 100,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "A saved favorite must lead the tray without changing menu order or rules."])
+        }
+        let favorite = store.items.last!
+        store.toggleFavorite(favorite)
+        guard store.overflowItems.map(\.id) == seeds.map(\.id),
+              preferences.favoriteItemIDs.isEmpty else {
+            throw NSError(domain: "RefreshIsolation", code: 101,
+                userInfo: [NSLocalizedDescriptionKey: "Removing a favorite did not restore tray order."])
+        }
+        store.toggleFavorite(favorite)
+        store.refresh(source: .observation)
+        guard store.isFavorite(favorite),
+              PreferencesStore(defaults: defaults).favoriteItemIDs == [favoriteID],
+              store.filteredItems(filter: .favorites).map(\.id) == [favoriteID],
+              store.items.map(\.id) == seeds.map(\.id),
+              preferences.itemRules.isEmpty, !store.layoutManagementEnabled else {
+            throw NSError(domain: "RefreshIsolation", code: 102,
+                userInfo: [NSLocalizedDescriptionKey: "Favorite changes leaked into layout or failed to persist."])
         }
     }
 

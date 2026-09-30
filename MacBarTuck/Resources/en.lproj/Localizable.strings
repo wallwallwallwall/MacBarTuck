@@ -72,6 +72,17 @@
 
 "items.search" = "Search Menu Items";
 "items.search.clear" = "Clear Search";
+"items.filter.label" = "Show Items";
+"items.filter.all" = "All (%d)";
+"items.filter.favorites" = "Favorites (%d)";
+"items.filter.tucked" = "Tucked (%d)";
+"items.filter.temporary" = "Temporary (%d)";
+"items.filter.reset" = "Clear Filters";
+"items.favorite.column" = "Star";
+"items.favorite.add" = "Add to favorites and show first in the tray";
+"items.favorite.remove" = "Remove from favorites";
+"items.favorite.add_item" = "Add %@ to favorites";
+"items.favorite.remove_item" = "Remove %@ from favorites";
 "items.rescan" = "Scan Again";
 "items.apply" = "Apply Display Modes";
 "items.apply.help" = "Tuck menu bar items using the selected display modes";

@@ -9,6 +9,7 @@ final class PreferencesStore {
     private let layoutManagementKey = "layoutManagementEnabled"
     private let automaticAvoidanceKey = "automaticAvoidanceEnabled"
     private let itemRulesKey = "itemRulesV1"
+    private let favoriteItemsKey = "favoriteMenuBarItemsV1"
     private let defaultLayoutKey = "didApplyDefaultLayoutV4"
     private let onboardingCompletedKey = "hasCompletedOnboarding"
     private let defaults: UserDefaults
@@ -25,6 +26,10 @@ final class PreferencesStore {
         Set((defaults.array(forKey: knownWindowIDsKey) as? [NSNumber] ?? []).map { CGWindowID($0.uint32Value) })
     }
     var deselectedItemIDs: Set<String> { Set(defaults.stringArray(forKey: deselectedItemsKey) ?? []) }
+    var favoriteItemIDs: Set<String> {
+        get { Set(defaults.stringArray(forKey: favoriteItemsKey) ?? []) }
+        set { defaults.set(newValue.sorted(), forKey: favoriteItemsKey) }
+    }
     var layoutManagementEnabled: Bool {
         get { defaults.bool(forKey: layoutManagementKey) }
         set { defaults.set(newValue, forKey: layoutManagementKey) }

@@ -79,6 +79,7 @@ swiftc -parse-as-library "${SOURCES[@]}" \
     "$ROOT/MacBarTuck/Services/MenuBarWindowServer.swift" \
     "$ROOT/MacBarTuck/Services/MenuBarScanner.swift" \
     "$ROOT/Tests/MenuBarIdentityTests.swift" \
+    "$ROOT/MacBarTuck/Models/MenuBarItemCollection.swift" \
     "$ROOT/MacBarTuck/Services/MenuBarItemActivator.swift" \
     "$ROOT/MacBarTuck/Services/MenuBarEventRelay.swift" \
     "$ROOT/MacBarTuck/Services/PreferencesStore.swift" \

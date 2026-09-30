@@ -72,6 +72,17 @@
 
 "items.search" = "搜索菜单项";
 "items.search.clear" = "清除搜索";
+"items.filter.label" = "显示项目";
+"items.filter.all" = "全部 (%d)";
+"items.filter.favorites" = "常用 (%d)";
+"items.filter.tucked" = "已收纳 (%d)";
+"items.filter.temporary" = "临时显示 (%d)";
+"items.filter.reset" = "清除筛选";
+"items.favorite.column" = "常用";
+"items.favorite.add" = "设为常用，在托盘中优先显示";
+"items.favorite.remove" = "取消常用";
+"items.favorite.add_item" = "将 %@ 设为常用";
+"items.favorite.remove_item" = "取消 %@ 的常用标记";
 "items.rescan" = "重新扫描";
 "items.apply" = "应用显示方式";
 "items.apply.help" = "按当前选择统一收纳菜单栏项目";

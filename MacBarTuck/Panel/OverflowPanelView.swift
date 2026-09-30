@@ -124,6 +124,7 @@ struct OverflowPanelView: View {
                 OverflowItemView(
                     item: item,
                     isTemporarilyVisible: store.isTemporarilyVisible(item),
+                    isFavorite: store.isFavorite(item),
                     action: { onActivate(item) },
                     rightAction: { onRightActivate(item) }
                 )

@@ -4,16 +4,15 @@ struct ItemsSettingsView: View {
     @ObservedObject var store: MenuBarItemStore
     var openPermissions: () -> Void = {}
     @State private var query = ""
+    @State private var filter: MenuBarItemFilter = .all
     @EnvironmentObject private var language: AppLanguageController
 
     private var filteredItems: [MenuBarItem] {
-        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return store.items }
-        return store.items.filter {
-            $0.title.localizedCaseInsensitiveContains(value) ||
-            $0.ownerName.localizedCaseInsensitiveContains(value) ||
-            $0.displayTitle(for: language.selectedLanguage).localizedCaseInsensitiveContains(value)
-        }
+        store.filteredItems(filter: filter, query: query)
+    }
+
+    private var hasFilters: Bool {
+        filter != .all || !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -60,16 +59,42 @@ struct ItemsSettingsView: View {
             }
             .padding(.horizontal, 20).frame(height: 58)
 
+            Picker(language.text("items.filter.label"), selection: $filter) {
+                ForEach(MenuBarItemFilter.allCases) { option in
+                    Text(language.text(option.localizationKey,
+                        store.filteredItems(filter: option, query: query).count))
+                        .tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityIdentifier("item-status-filter")
+            .padding(.horizontal, 20).padding(.bottom, 12)
+
             if store.requiresScreenRecording {
                 emptyState(language.text("items.recording_required"), symbol: "lock.shield") {
                     Button(language.text("items.view_permissions"), action: openPermissions)
                 }
             } else if filteredItems.isEmpty {
-                emptyState(query.isEmpty ? language.text("items.empty") : language.text("items.no_matches"), symbol: "menubar.rectangle") {
-                    if !query.isEmpty { Button(language.text("items.search.clear")) { query = "" } }
+                emptyState(hasFilters ? language.text("items.no_matches") : language.text("items.empty"), symbol: "menubar.rectangle") {
+                    if hasFilters {
+                        Button(language.text("items.filter.reset")) { query = ""; filter = .all }
+                    }
                 }
             } else {
                 Table(filteredItems) {
+                    TableColumn(language.text("items.favorite.column")) { item in
+                        Button { store.toggleFavorite(item) } label: {
+                            Image(systemName: store.isFavorite(item) ? "star.fill" : "star")
+                                .foregroundStyle(store.isFavorite(item) ? MacBarTuckTheme.retuckAction : MacBarTuckTheme.secondaryText)
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.borderless)
+                        .help(language.text(store.isFavorite(item) ? "items.favorite.remove" : "items.favorite.add"))
+                        .accessibilityLabel(language.text(store.isFavorite(item) ? "items.favorite.remove_item" : "items.favorite.add_item",
+                            item.displayTitle(for: language.selectedLanguage)))
+                        .accessibilityIdentifier("favorite-\(item.id)")
+                    }.width(42)
                     TableColumn(language.text("items.column.item")) { item in
                         HStack(spacing: 10) {
                             MenuItemIconView(item: item, size: 28, prefersApplicationIcon: true).frame(width: 34)
