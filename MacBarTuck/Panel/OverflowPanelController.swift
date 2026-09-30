@@ -71,8 +71,8 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    func toggle(relativeTo button: NSStatusBarButton) { panel.isVisible ? close() : show(relativeTo: button) }
-    var isVisible: Bool { panel.isVisible }
+    func toggle(relativeTo button: NSStatusBarButton) { isVisible ? close() : show(relativeTo: button) }
+    var isVisible: Bool { panel.isVisible && closeWorkItem == nil }
 
     func updateLocalization() {
         let title = language.text("window.panel")
@@ -80,15 +80,20 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         panel.setAccessibilityLabel(title)
     }
     func show(relativeTo button: NSStatusBarButton) {
-        guard !panel.isVisible else { return }
+        guard let frame = button.macBarTuckScreenFrame else { return }
+        anchorButton = button
+        show(relativeTo: frame)
+    }
+
+    func show(relativeTo anchorFrame: CGRect) {
+        guard !isVisible else { return }
         closeWorkItem?.cancel()
         closeWorkItem = nil
-        anchorButton = button
-        guard positionPanel(relativeTo: button) else { return }
+        guard positionPanel(relativeTo: anchorFrame) else { return }
         presentation.isPresented = false
         panel.orderFrontRegardless()
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.isVisible else { return }
             withAnimation(.easeOut(duration: self.reduceMotion ? 0.08 : 0.12)) {
                 self.presentation.isPresented = true
             }
@@ -103,22 +108,22 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
         }
         if let globalEventMonitor { NSEvent.removeMonitor(globalEventMonitor) }
         globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            DispatchQueue.main.async { self?.close() }
+            guard let self, !self.isPointerAtAnchor else { return }
+            self.close()
         }
         if let localEventMonitor { NSEvent.removeMonitor(localEventMonitor) }
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            if event.type == .rightMouseDown,
-               let self,
-               self.panel.contentView?.hitTest(event.locationInWindow) != nil {
-                return event
-            }
-            DispatchQueue.main.async { self?.close() }
+            // Buttons activate on mouse-up. Dismissing on an internal
+            // mouse-down removes them before a normal or held click finishes.
+            guard let self, event.window !== self.panel,
+                  !self.isPointerAtAnchor else { return event }
+            self.close()
             return event
         }
     }
 
     func close() {
-        guard panel.isVisible else { return }
+        guard isVisible else { return }
         if let globalEventMonitor { NSEvent.removeMonitor(globalEventMonitor); self.globalEventMonitor = nil }
         if let localEventMonitor { NSEvent.removeMonitor(localEventMonitor); self.localEventMonitor = nil }
         withAnimation(.easeOut(duration: reduceMotion ? 0.06 : 0.10)) {
@@ -143,9 +148,17 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
 
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
+    private var isPointerAtAnchor: Bool {
+        anchorButton?.macBarTuckScreenFrame?.contains(NSEvent.mouseLocation) == true
+    }
+
     private func positionPanel(relativeTo button: NSStatusBarButton) -> Bool {
-        guard let buttonFrame = button.macBarTuckScreenFrame,
-              let screen = screen(containing: CGPoint(x: buttonFrame.midX, y: buttonFrame.midY)) else { return false }
+        guard let frame = button.macBarTuckScreenFrame else { return false }
+        return positionPanel(relativeTo: frame)
+    }
+
+    private func positionPanel(relativeTo buttonFrame: CGRect) -> Bool {
+        guard let screen = screen(containing: CGPoint(x: buttonFrame.midX, y: buttonFrame.midY)) else { return false }
         let usableFrame = usableFrame(for: screen)
         guard !usableFrame.isNull, usableFrame.width > 0, usableFrame.height > 0 else { return false }
 

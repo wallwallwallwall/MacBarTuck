@@ -74,6 +74,7 @@ final class MenuBarItemStore: ObservableObject {
     private var nativeOverflowSpacerCount = 0
     private var nativeOverflowAppliedSpacerCount = 0
     private var assessmentHiddenItemIDs = Set<String>()
+    private var pendingAssessmentBundles = Set<String>()
 
     private struct ItemPresentation: Equatable {
         let id: String
@@ -626,6 +627,18 @@ final class MenuBarItemStore: ObservableObject {
         preferences.saveRules(rules)
         recomputeManagedSelection()
 
+        if platformPolicy.movement == .assessmentMode,
+           let bundle = MenuBarAssessmentModePolicy.effectiveBundleIdentifier(
+               resolved: item.bundleIdentifier, host: item.menuBarHostBundleIdentifier) {
+            if affectedItems.contains(where: \.isSelected),
+               assessmentHiddenItemIDs.isDisjoint(with: affectedIDs),
+               temporarilyVisibleItemIDs.isDisjoint(with: affectedIDs) {
+                pendingAssessmentBundles.insert(bundle)
+            } else {
+                pendingAssessmentBundles.remove(bundle)
+            }
+        }
+
         if affectedItems.contains(where: \.isSelected), layoutManagementEnabled {
             layoutOperationMessage = language.text("store.layout.changes_pending")
         } else if !previouslyManaged.isEmpty, layoutManagementEnabled {
@@ -1085,7 +1098,20 @@ final class MenuBarItemStore: ObservableObject {
     }
 
     private func assessmentPlan() -> MenuBarAssessmentPlan {
-        let assessmentItems = assessmentItems
+        // Rule pickers stage new hides. Refresh, reveal and restore must not
+        // commit those edits as a side effect of updating the running apps.
+        let assessmentItems = assessmentItems.map { item in
+            let bundle = MenuBarAssessmentModePolicy.effectiveBundleIdentifier(
+                resolved: item.resolvedBundleIdentifier, host: item.hostBundleIdentifier)
+            return MenuBarAssessmentItem(
+                id: item.id,
+                resolvedBundleIdentifier: item.resolvedBundleIdentifier,
+                hostBundleIdentifier: item.hostBundleIdentifier,
+                isSelected: item.isSelected && !pendingAssessmentBundles.contains(bundle ?? ""),
+                isProtected: item.isProtected,
+                isTemporarilyVisible: item.isTemporarilyVisible
+            )
+        }
         var running = runningBundleIdentifiers()
         running.formUnion(assessmentItems.compactMap { item in
             MenuBarAssessmentModePolicy.effectiveBundleIdentifier(
@@ -1168,6 +1194,7 @@ final class MenuBarItemStore: ObservableObject {
             return
         }
         if clearTemporaryItems && !automatic {
+            pendingAssessmentBundles.removeAll()
             temporarilyVisibleItemIDs.removeAll()
         }
 
@@ -1337,6 +1364,9 @@ final class MenuBarItemStore: ObservableObject {
             )
         } else {
             layoutOperationMessage = language.text("store.layout.correct")
+        }
+        if !pendingAssessmentBundles.isEmpty {
+            layoutOperationMessage = language.text("store.layout.changes_pending")
         }
         objectWillChange.send()
         onLayoutStateChanged?()
@@ -2011,6 +2041,7 @@ final class MenuBarItemStore: ObservableObject {
         }
         layoutManager.isEnabled = false
         layoutManagementEnabled = false
+        pendingAssessmentBundles.removeAll()
         onLayoutStateChanged?()
         restoreLayout { [weak self] in
             guard let self else { return }

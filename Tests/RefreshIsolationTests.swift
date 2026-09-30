@@ -507,6 +507,21 @@ enum RefreshIsolationTests {
                     "Assessment mode used the wrong allowlist or exposed a spacer section."])
         }
 
+        let chatItem = store.items.first { $0.title == "Chat" }!
+        store.setRule(.alwaysHidden, for: chatItem)
+        for source in [MenuBarItemStore.RefreshSource.manual, .observation, .externalChange] {
+            store.refresh(source: source)
+            try await Task.sleep(for: .milliseconds(300))
+        }
+        guard assessmentManager.appliedConfigurations.count == 1,
+              assessmentManager.activeConfiguration == firstConfiguration,
+              !store.overflowItems.contains(where: { $0.id == chatItem.id }) else {
+            throw NSError(domain: "RefreshIsolation", code: 91,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Refreshing applied a staged hidden rule before the user pressed Apply."])
+        }
+        store.setRule(.alwaysVisible, for: chatItem)
+
         for _ in 0..<12 { store.refresh(source: .externalChange) }
         try await Task.sleep(for: .milliseconds(350))
         guard assessmentManager.appliedConfigurations.count == 1,
@@ -569,15 +584,29 @@ enum RefreshIsolationTests {
                     "Retuck did not restore the assessment-mode bundle filter."])
         }
 
+        store.setRule(.alwaysHidden, for: chatItem)
         store.setRule(.alwaysVisible, for: cpuItem)
         guard await waitUntil({
-            assessmentManager.invalidateCount == 1 && store.selectedItems.isEmpty
+            assessmentManager.invalidateCount == 1 && store.selectedItems.map(\.id) == [chatItem.id]
         }), store.items.filter({ $0.bundleIdentifier == "com.example.metrics" })
             .allSatisfy({ $0.rule == .alwaysVisible }),
            store.overflowItems.isEmpty else {
             throw NSError(domain: "RefreshIsolation", code: 88,
                 userInfo: [NSLocalizedDescriptionKey:
                     "Changing one bundle sibling did not restore and synchronize the whole bundle."])
+        }
+
+        store.applyLayout()
+        guard await waitUntil({ store.overflowItems.map(\.id) == [chatItem.id] }) else {
+            throw NSError(domain: "RefreshIsolation", code: 92,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Apply did not commit the staged rule after restoring a different application."])
+        }
+        store.setRule(.alwaysVisible, for: chatItem)
+        guard store.overflowItems.isEmpty, assessmentManager.invalidateCount == 2 else {
+            throw NSError(domain: "RefreshIsolation", code: 93,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Restoring the last tucked application left the assessment filter active."])
         }
 
         store.setRule(.alwaysHidden, for: cpuItem)
@@ -591,7 +620,7 @@ enum RefreshIsolationTests {
             store.prepareForTermination { continuation.resume() }
         }
         guard assessmentManager.activeConfiguration == nil,
-              assessmentManager.invalidateCount == 2,
+              assessmentManager.invalidateCount == 3,
               store.overflowItems.isEmpty else {
             throw NSError(domain: "RefreshIsolation", code: 90,
                 userInfo: [NSLocalizedDescriptionKey:
