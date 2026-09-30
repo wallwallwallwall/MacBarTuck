@@ -292,6 +292,23 @@ private enum MenuBarIdentityTests {
         )
         try expect(metric.displayTitle(for: .english) == "1" && !metric.showsNotificationCountInTitle,
                    "Numeric status titles from unrelated apps must not be treated as notifications.")
+
+        let weChat = MenuBarItem(
+            id: "wechat", title: " 1", ownerName: "微信",
+            bundleIdentifier: "com.tencent.xinWeChat", frame: .zero,
+            axElement: nil, isSelected: false, supportsPressAction: true
+        )
+        try expect(weChat.displayTitle(for: .simplifiedChinese) == "微信 1" &&
+                   weChat.tooltip(for: .simplifiedChinese) == "微信 1" &&
+                   weChat.showsNotificationCountInTitle,
+                   "WeChat unread counts must retain the application name.")
+        weChat.title = "99+"
+        try expect(weChat.displayTitle(for: .english) == "微信 99+",
+                   "Capped unread counts must retain the application name.")
+        weChat.title = "Connected"
+        try expect(weChat.displayTitle(for: .english) == "Connected" &&
+                   !weChat.showsNotificationCountInTitle,
+                   "Nonnumeric WeChat status text must stay unchanged.")
     }
 
     private static func inputSourcePresentation() throws {

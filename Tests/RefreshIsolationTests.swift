@@ -42,6 +42,7 @@ private final class RefreshMaskWindow: MenuBarMaskWindow {
 private final class RefreshItemActivator: MenuBarItemActivating {
     var directResult = false
     var movedResult = false
+    var onMovedActivation: (() -> Void)?
     private(set) var directActivationCount = 0
     private(set) var hitTestActivationCount = 0
     private(set) var movedActivationCount = 0
@@ -63,6 +64,7 @@ private final class RefreshItemActivator: MenuBarItemActivating {
         completion: @escaping (Bool) -> Void
     ) {
         movedActivationCount += 1
+        onMovedActivation?()
         completion(movedResult)
     }
 
@@ -79,6 +81,9 @@ private final class RefreshAssessmentManager: MenuBarAssessmentModeManaging {
     private(set) var appliedConfigurations = [MenuBarAssessmentConfiguration]()
     private(set) var invalidateCount = 0
     var results = [MenuBarAssessmentApplyResult]()
+    var completionDelay: TimeInterval = 0
+    var holdCompletion = false
+    var pendingCompletion: (() -> Void)?
 
     func apply(
         _ configuration: MenuBarAssessmentConfiguration,
@@ -86,8 +91,17 @@ private final class RefreshAssessmentManager: MenuBarAssessmentModeManaging {
     ) {
         appliedConfigurations.append(configuration)
         let result = results.isEmpty ? .applied(changed: true) : results.removeFirst()
-        if case .applied = result { activeConfiguration = configuration }
-        completion(result)
+        let finish = { [self] in
+            if case .applied = result { activeConfiguration = configuration }
+            completion(result)
+        }
+        if holdCompletion {
+            pendingCompletion = finish
+        } else if completionDelay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + completionDelay) { finish() }
+        } else {
+            finish()
+        }
     }
 
     func invalidate() {
@@ -616,12 +630,59 @@ enum RefreshIsolationTests {
                 userInfo: [NSLocalizedDescriptionKey:
                     "The assessment filter could not be re-enabled before termination."])
         }
+        activator.movedResult = false
+        activator.onMovedActivation = {
+            // A process appears after reveal, so the retry's scan must update
+            // the assessment allowlist asynchronously before it can click.
+            runningBundleIdentifiers.insert("com.example.launched-during-click")
+            assessmentManager.completionDelay = 0.3
+        }
+        store.activate(cpuItem)
+        guard await waitUntil({
+            activator.directActivationCount == 1 && store.activatingItemID == nil
+        }), store.lastActivationError == nil,
+           store.temporarilyVisibleItemIDs == metricItemIDs else {
+            throw NSError(domain: "RefreshIsolation", code: 94,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "The activation retry collided with its own asynchronous layout refresh."])
+        }
+        assessmentManager.completionDelay = 0
+        store.retuckTemporarilyVisibleItems()
+        activator.onMovedActivation = {
+            runningBundleIdentifiers.insert("com.example.timeout")
+            assessmentManager.holdCompletion = true
+        }
+        store.activate(cpuItem)
+        guard await waitUntil({ assessmentManager.pendingCompletion != nil }) else {
+            throw NSError(domain: "RefreshIsolation", code: 95,
+                userInfo: [NSLocalizedDescriptionKey: "The layout timeout fixture did not start."])
+        }
+        try await Task.sleep(for: .milliseconds(2_200))
+        guard store.activatingItemID == nil, store.lastActivationError != nil,
+              activator.directActivationCount == 1 else {
+            throw NSError(domain: "RefreshIsolation", code: 96,
+                userInfo: [NSLocalizedDescriptionKey: "A stalled layout left activation waiting indefinitely."])
+        }
+        assessmentManager.holdCompletion = false
+        assessmentManager.pendingCompletion?()
+        assessmentManager.pendingCompletion = nil
+        activator.onMovedActivation = nil
+        store.retuckTemporarilyVisibleItems()
+        let movesBeforeCancellation = activator.movedActivationCount
+        store.activate(cpuItem)
+        guard await waitUntil({ activator.movedActivationCount > movesBeforeCancellation }) else {
+            throw NSError(domain: "RefreshIsolation", code: 97,
+                userInfo: [NSLocalizedDescriptionKey: "The pending activation did not reach its retry."])
+        }
         await withCheckedContinuation { continuation in
             store.prepareForTermination { continuation.resume() }
         }
+        try await Task.sleep(for: .milliseconds(250))
         guard assessmentManager.activeConfiguration == nil,
               assessmentManager.invalidateCount == 3,
-              store.overflowItems.isEmpty else {
+              store.overflowItems.isEmpty,
+              store.activatingItemID == nil,
+              activator.directActivationCount == 1 else {
             throw NSError(domain: "RefreshIsolation", code: 90,
                 userInfo: [NSLocalizedDescriptionKey:
                     "Termination left the assessment assertion or hidden state active."])

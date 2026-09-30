@@ -2055,6 +2055,7 @@ final class MenuBarItemStore: ObservableObject {
 
     func prepareForTermination(completion: @escaping () -> Void) {
         isTerminating = true
+        finishActivation()
         monitorTimer?.invalidate()
         maskGeometryTimer?.invalidate()
         refreshWorkItem?.cancel()
@@ -2552,14 +2553,46 @@ final class MenuBarItemStore: ObservableObject {
             finishActivation()
             return
         }
-        finishActivation()
         // Control Center can replace a status-item window between the scan
-        // and the click. A single fresh pass handles that race without
-        // returning to the old multi-second activation transaction.
+        // and the click. Keep this activation reserved across the retry so
+        // observation refreshes cannot race its own layout reconciliation.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-            self?.refresh()
-            self?.activate(item, mouseButton: mouseButton, retryCount: retryCount + 1)
+            guard let self, !self.isTerminating, self.activatingItemID == item.id else { return }
+            self.finishActivation()
+            self.refresh()
+            self.activatingItemID = item.id
+            self.resumeActivationAfterLayout(
+                item, mouseButton: mouseButton, retryCount: retryCount + 1,
+                deadline: .now() + 2, message: message
+            )
         }
+    }
+
+    private func resumeActivationAfterLayout(
+        _ item: MenuBarItem,
+        mouseButton: CGMouseButton,
+        retryCount: Int,
+        deadline: DispatchTime,
+        message: String
+    ) {
+        guard !isTerminating, activatingItemID == item.id else { return }
+        guard !isApplyingLayout, !isRestoringLayout else {
+            guard DispatchTime.now() < deadline else {
+                DiagnosticLog.shared.record("activation.retry_layout_timeout")
+                lastActivationError = message
+                finishActivation()
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.resumeActivationAfterLayout(
+                    item, mouseButton: mouseButton, retryCount: retryCount,
+                    deadline: deadline, message: message
+                )
+            }
+            return
+        }
+        finishActivation()
+        activate(item, mouseButton: mouseButton, retryCount: retryCount)
     }
 
     private func finishActivation() { activatingItemID = nil }

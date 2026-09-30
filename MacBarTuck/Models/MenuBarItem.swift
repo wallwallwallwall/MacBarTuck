@@ -127,20 +127,22 @@ final class MenuBarItem: Identifiable {
 
     var displayTitle: String { displayTitle(for: AppLanguageController.shared.selectedLanguage) }
 
-    private var dingTalkNotificationCount: String? {
+    private var notificationCount: String? {
         guard !isProtectedSystemItem,
-              bundleIdentifier?.lowercased().hasSuffix("com.dingtalk.mac") == true else { return nil }
+              let bundle = bundleIdentifier?.lowercased(),
+              bundle.hasSuffix("com.dingtalk.mac") || bundle == "com.tencent.xinwechat" else { return nil }
         let value = (resolvedTitle ?? title).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, value.count <= 3,
-              value.utf8.allSatisfy({ (48...57).contains($0) }) else { return nil }
+        let digits = value.hasSuffix("+") ? value.dropLast() : value[...]
+        guard !digits.isEmpty, digits.count <= 3,
+              digits.utf8.allSatisfy({ (48...57).contains($0) }) else { return nil }
         return value
     }
 
-    var showsNotificationCountInTitle: Bool { dingTalkNotificationCount != nil }
+    var showsNotificationCountInTitle: Bool { notificationCount != nil }
 
     func displayTitle(for language: AppLanguage) -> String {
         let value = resolvedTitle ?? title
-        if let count = dingTalkNotificationCount {
+        if let count = notificationCount {
             return "\(displayOwnerName(for: language)) \(count)"
         }
         let normalized = value.lowercased()
