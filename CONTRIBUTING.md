@@ -50,4 +50,4 @@ open -n work/DerivedData-Debug/Build/Products/Debug/MacBarTuck.app \
 - 新增规则行为时，为 `Tests/OverflowPolicyTests.swift` 增加直接测试。
 - 不提交 `work/`、`dist/`、Xcode 用户状态或本机权限数据。
 
-涉及真实菜单栏移动的测试，请先退出 iBar、Bartender、Ice 等同类工具，并确认重要工作已保存。测试完成后执行“安全重置”，确认所有项目恢复可见。
+涉及真实菜单栏移动的测试，请先退出 iBar、Bartender、Ice 等同类工具，并确认重要工作已保存。测试前记录用户规则与偏好，结束后恢复测试改变的值并确认菜单栏状态；完整“安全重置”只在独立测试配置中验证，不清空用户规则。验收范围见 [项目规则](AGENTS.md) 和 [日常功能回归](docs/daily-workflows.md)。
