@@ -108,9 +108,9 @@ private enum AppAccessTests {
                    "The borderless tray must not receive an opaque system-gray window background.")
         try expect(MacBarTuckTrayLayout.preferredWidth(itemCount: 0, showsRetuck: false) >= 246,
                    "The empty tray must leave room for its status summary and localized empty message.")
-        try expect(MacBarTuckTrayLayout.preferredWidth(itemCount: 5, showsRetuck: false) == 345,
+        try expect(MacBarTuckTrayLayout.preferredWidth(itemCount: 5, showsRetuck: false) == 380,
                    "Five tucked items must fit without falling back to a scroller.")
-        try expect(MacBarTuckTrayLayout.preferredWidth(itemCount: 5, showsRetuck: true) == 470,
+        try expect(MacBarTuckTrayLayout.preferredWidth(itemCount: 5, showsRetuck: true) == 505,
                    "Showing the retuck action must reserve a stable operation area.")
         print("AppAccessTests: \(checks) passed")
     }

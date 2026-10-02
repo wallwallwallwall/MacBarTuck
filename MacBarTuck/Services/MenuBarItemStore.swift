@@ -210,6 +210,12 @@ final class MenuBarItemStore: ObservableObject {
             language: language.selectedLanguage)
     }
 
+    func matchingItemGroups(query: String) -> [MenuBarItemFilter: [MenuBarItem]] {
+        MenuBarItemCollection.matchingGroups(items, query: query,
+            favoriteIDs: favoriteItemIDs, temporaryIDs: temporarilyVisibleItemIDs,
+            language: language.selectedLanguage)
+    }
+
     var temporarilyVisibleItems: [MenuBarItem] {
         items.filter { temporarilyVisibleItemIDs.contains($0.id) }
     }

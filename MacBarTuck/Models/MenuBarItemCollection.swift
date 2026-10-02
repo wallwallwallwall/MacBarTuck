@@ -26,22 +26,30 @@ enum MenuBarItemCollection {
         temporaryIDs: Set<String>,
         language: AppLanguage
     ) -> [MenuBarItem] {
+        matchingGroups(items, query: query, favoriteIDs: favoriteIDs,
+            temporaryIDs: temporaryIDs, language: language)[filter, default: []]
+    }
+
+    static func matchingGroups(
+        _ items: [MenuBarItem], query: String, favoriteIDs: Set<String>,
+        temporaryIDs: Set<String>, language: AppLanguage
+    ) -> [MenuBarItemFilter: [MenuBarItem]] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return items.filter { item in
-            let matchesFilter: Bool
-            switch filter {
-            case .all: matchesFilter = true
-            case .favorites: matchesFilter = isFavorite(item, favoriteIDs: favoriteIDs)
-            case .tucked:
-                matchesFilter = item.visibility == .hidden &&
-                    !temporaryIDs.contains(item.id) && !item.isAlwaysVisibleSystemItem
-            case .temporary: matchesFilter = temporaryIDs.contains(item.id)
-            }
-            return matchesFilter && (query.isEmpty ||
+        var groups: [MenuBarItemFilter: [MenuBarItem]] = [:]
+        for item in items {
+            guard query.isEmpty ||
                 item.displayTitle(for: language).localizedCaseInsensitiveContains(query) ||
                 item.displayOwnerName(for: language).localizedCaseInsensitiveContains(query) ||
                 item.title.localizedCaseInsensitiveContains(query) ||
-                item.ownerName.localizedCaseInsensitiveContains(query))
+                item.ownerName.localizedCaseInsensitiveContains(query) else { continue }
+            groups[.all, default: []].append(item)
+            if isFavorite(item, favoriteIDs: favoriteIDs) { groups[.favorites, default: []].append(item) }
+            if temporaryIDs.contains(item.id) {
+                groups[.temporary, default: []].append(item)
+            } else if item.visibility == .hidden && !item.isAlwaysVisibleSystemItem {
+                groups[.tucked, default: []].append(item)
+            }
         }
+        return groups
     }
 }

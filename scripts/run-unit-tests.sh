@@ -99,6 +99,12 @@ swiftc -parse-as-library "${SOURCES[@]}" \
 "$BUILD_DIR/AppAccessTests"
 
 swiftc -parse-as-library \
+    "$ROOT/MacBarTuck/Services/TrayShortcutController.swift" \
+    "$ROOT/Tests/TrayShortcutTests.swift" \
+    -o "$BUILD_DIR/TrayShortcutTests"
+"$BUILD_DIR/TrayShortcutTests"
+
+swiftc -parse-as-library \
     "$ROOT/MacBarTuck/UI/AppLocalization.swift" \
     "$ROOT/MacBarTuck/Services/PermissionManager.swift" \
     "$ROOT/Tests/PermissionStateTests.swift" \

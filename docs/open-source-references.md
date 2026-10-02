@@ -24,7 +24,7 @@
 3. 其次考虑规则导入导出、临时暂停自动收起、显示器配置切换后的规则恢复。
 4. 暂不增加脚本触发器、定位权限、网络账号、遥测、自动重启其他应用或全局菜单栏外观改写。
 
-上述扩展未实现。当前不引入额外第三方二进制依赖，也不改变 MIT 许可。
+其中全局快捷键已在 0.1.30 实现，其余扩展按具体版本说明确认。当前不引入额外第三方二进制依赖，也不改变 MIT 许可。
 
 ## 0.1.2 本地适配
 
@@ -33,3 +33,9 @@
 ## 0.1.29 常用与筛选
 
 2026-10-01 核验 Apple 的 [SegmentedPickerStyle](https://developer.apple.com/documentation/swiftui/segmentedpickerstyle) 官方资料，其 macOS 最低版本为 10.15，覆盖本项目 macOS 15 起的部署目标。复用 SwiftUI 原生 Picker、Table、Button 和 SF Symbols 星标，沿用仓库现有主题，不引入外部 UI 包或素材。收藏使用已有 UserDefaults 持久化方式及项目身份；托盘按常用和普通两组稳定分区，不重新排列系统菜单栏。状态筛选复用实际可见性和临时展开状态。
+
+## 0.1.30 快捷键与快捷入口
+
+2026-10-02 核验 [KeyboardShortcuts 的 HotKey 实现](https://github.com/sindresorhus/KeyboardShortcuts/blob/772133d9dbe800fdac0473226822994c5c162c58/Sources/KeyboardShortcuts/HotKey.swift)，MIT，上游最近推送 2026-09-11。参考其 Carbon 注册、事件 ID 路由、系统快捷键冲突查询与注销生命周期模式，按本项目仅两个固定组合的需求实现小型包装，没有引入录制器、事件 tap 或包依赖。选择释放事件以避免按住时反复切换，替换先注册后注销以保留工作中的快捷键。仅使用 macOS 15 已有 API，新旧系统仍需分别验收。界面复用现有 SwiftUI Picker、Button、FocusState、keyboardShortcut 和 SF Symbols 齿轮，不另建主题。
+
+同时核对 Xcode 27 SDK 的 `CarbonEvents.h` 中 `RegisterEventHotKey` 契约：普通注册可能跨进程共享组合键，因此本项目使用 `kEventHotKeyExclusive`，让系统拒绝已有的冲突注册。系统已启用的符号快捷键通过 `CopySymbolicHotKeys` 预检，不修改其他应用或系统快捷键。

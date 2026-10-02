@@ -207,3 +207,8 @@
 "preview.item.focus" = "专注计时";
 "preview.item.clipboard" = "剪贴板";
 "preview.item.audio" = "声音";
+"preferences.shortcut" = "打开 / 关闭托盘快捷键";
+"preferences.shortcut.disabled" = "关闭";
+"preferences.shortcut.controlOptionSpace" = "⌃⌥ 空格";
+"preferences.shortcut.controlOptionB" = "⌃⌥ B";
+"preferences.shortcut.failed" = "快捷键不可用或已被占用，已保留原设置。请选择其他组合键。";

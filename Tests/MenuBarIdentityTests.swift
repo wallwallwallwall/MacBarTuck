@@ -199,6 +199,12 @@ private enum MenuBarIdentityTests {
         try expect(matches(.temporary, "clipboard").isEmpty, "Search must not escape the selected filter.")
         try expect(matches(.all, "\n ") == items.map(\.id), "Whitespace must not hide all rows.")
         try expect(matches(.all, "not-present").isEmpty, "Unknown text must produce an empty result.")
+        let groups = MenuBarItemCollection.matchingGroups(items, query: " notes ",
+            favoriteIDs: favorites, temporaryIDs: [temporary.id], language: .english)
+        try expect(groups[.all]?.map(\.id) == items.map(\.id) && groups[.favorites]?.count == 2,
+                   "One search snapshot must preserve row order and favorite counts.")
+        try expect(groups[.tucked]?.map(\.id) == [hidden.id] && groups[.temporary]?.map(\.id) == [temporary.id],
+                   "Search counts must separate confirmed tucked and temporary items.")
         let expectedOrder = [temporary.id, partial.id, hidden.id, pending.id, unknown.id]
         try expect(MenuBarItemCollection.favoritesFirst(items, favoriteIDs: favorites).map(\.id) == expectedOrder,
                    "Favorites and regular items must both preserve their original relative order.")

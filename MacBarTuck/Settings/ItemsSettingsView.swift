@@ -5,22 +5,31 @@ struct ItemsSettingsView: View {
     var openPermissions: () -> Void = {}
     @State private var query = ""
     @State private var filter: MenuBarItemFilter = .all
+    @FocusState private var searchIsFocused: Bool
     @EnvironmentObject private var language: AppLanguageController
-
-    private var filteredItems: [MenuBarItem] {
-        store.filteredItems(filter: filter, query: query)
-    }
 
     private var hasFilters: Bool {
         filter != .all || !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
+        let groups = store.matchingItemGroups(query: query)
+        let filteredItems = groups[filter, default: []]
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    Button { searchIsFocused = true } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .keyboardShortcut("f", modifiers: .command)
+                    .help(language.text("items.search"))
+                    .accessibilityLabel(language.text("items.search"))
                     TextField(language.text("items.search"), text: $query).textFieldStyle(.plain)
+                        .focused($searchIsFocused)
+                        .onExitCommand {
+                            if query.isEmpty { searchIsFocused = false } else { query = "" }
+                        }
                         .accessibilityLabel(language.text("items.search"))
                     Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
@@ -62,7 +71,7 @@ struct ItemsSettingsView: View {
             Picker(language.text("items.filter.label"), selection: $filter) {
                 ForEach(MenuBarItemFilter.allCases) { option in
                     Text(language.text(option.localizationKey,
-                        store.filteredItems(filter: option, query: query).count))
+                        groups[option, default: []].count))
                         .tag(option)
                 }
             }

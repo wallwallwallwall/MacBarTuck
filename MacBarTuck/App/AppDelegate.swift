@@ -9,6 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let language = AppLanguageController.shared
     lazy var store = MenuBarItemStore(language: language)
     lazy var dockVisibility = DockVisibilityController(language: language)
+    lazy var trayShortcut = TrayShortcutController { [weak self] in
+        self?.statusBarController?.togglePanelFromShortcut()
+    }
     private var permissions: PermissionManager { store.permissions }
     private let preferences = PreferencesStore()
     private var statusBarController: StatusBarController?
@@ -60,9 +63,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        statusBarController = StatusBarController(store: store, language: language, menuProvider: { [weak self] in
+        statusBarController = StatusBarController(store: store, language: language,
+            showSettings: { [weak self] in self?.showSettings() }, menuProvider: { [weak self] in
             self?.menus.makeStatusMenu() ?? NSMenu()
         })
+        trayShortcut.start()
         dockVisibility.applyInitialPolicy()
         store.startMonitoring()
         // Startup must be observational only. Restoring offscreen system
@@ -99,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.contentMinSize = .init(width: 760, height: 560)
             let store = self.store
             let dockVisibility = self.dockVisibility
+            let trayShortcut = self.trayShortcut
             let restartAction: () -> Void = { [weak self] in
                 self?.restartApplication()
             }
@@ -106,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.showOnboarding()
             }
             window.contentView = NSHostingView(rootView: AppLocalizedRoot(language: language) {
-                SettingsView(store: store, dockVisibility: dockVisibility,
+                SettingsView(store: store, dockVisibility: dockVisibility, trayShortcut: trayShortcut,
                     restartApplication: restartAction, showOnboarding: onboardingAction)
             })
             window.center()
@@ -210,8 +216,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.isMovableByWindowBackground = true
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: .darkAqua)
+            let store = self.store
+            let settingsAction: () -> Void = { [weak self] in
+                self?.panelPreviewWindowController?.close()
+                self?.showSettings()
+            }
             window.contentView = NSHostingView(rootView: AppLocalizedRoot(language: language) {
-                OverflowPanelPreviewView(store: self.store)
+                OverflowPanelPreviewView(store: store, onSettings: settingsAction)
             })
             window.center()
             let controller = NSWindowController(window: window)
@@ -242,6 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        trayShortcut.stop()
         let needsRestore = store.hasActiveMaskOverlay || store.hasActiveAssessmentMode ||
             (store.layoutManagementEnabled && !store.selectedItems.isEmpty)
         guard needsRestore else { return .terminateNow }

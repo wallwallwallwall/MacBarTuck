@@ -8,6 +8,7 @@ struct MacBarTuckApp: App {
         Settings {
             AppLocalizedRoot(language: appDelegate.language) {
                 SettingsView(store: appDelegate.store, dockVisibility: appDelegate.dockVisibility,
+                             trayShortcut: appDelegate.trayShortcut,
                              restartApplication: { appDelegate.restartApplication() },
                              showOnboarding: { appDelegate.showOnboarding() })
             }

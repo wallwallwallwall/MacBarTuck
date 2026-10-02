@@ -15,6 +15,7 @@ struct OverflowPanelView: View {
     let onActivate: (MenuBarItem) -> Void
     let onRightActivate: (MenuBarItem) -> Void
     let onRetuck: () -> Void
+    let onSettings: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var language: AppLanguageController
@@ -96,6 +97,17 @@ struct OverflowPanelView: View {
                 .help(language.text("panel.retuck"))
                 .accessibilityLabel(language.text("panel.retuck.count", store.temporarilyVisibleItems.count))
             }
+            Button(action: onSettings) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 15))
+                    .foregroundStyle(MacBarTuckTheme.secondaryText)
+                    .frame(width: MacBarTuckTrayLayout.settingsButtonWidth, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(language.text("menu.settings"))
+            .accessibilityLabel(language.text("menu.settings"))
+            .accessibilityIdentifier("tray-settings")
         }
         .padding(.horizontal, 7)
         .frame(height: Self.preferredHeight - 6)

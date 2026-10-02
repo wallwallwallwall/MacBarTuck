@@ -5,6 +5,7 @@ struct PreferencesSettingsView: View {
     @ObservedObject var store: MenuBarItemStore
     @ObservedObject var launchAtLogin: LaunchAtLoginManager
     @ObservedObject var dockVisibility: DockVisibilityController
+    @ObservedObject var trayShortcut: TrayShortcutController
     @Binding var hoverRevealEnabled: Bool
     @Binding var hoverRevealDelaySeconds: Double
     let showOnboarding: () -> Void
@@ -21,6 +22,24 @@ struct PreferencesSettingsView: View {
                         title: language.text("preferences.menubar.section"),
                         symbol: "menubar.rectangle", tint: MacBarTuckTheme.collected
                     ) {
+                        HStack {
+                            Text(language.text("preferences.shortcut"))
+                            Spacer()
+                            Picker(language.text("preferences.shortcut"), selection: Binding(
+                                get: { trayShortcut.selection },
+                                set: { trayShortcut.setShortcut($0) }
+                            )) {
+                                ForEach(TrayShortcut.allCases) { option in
+                                    Text(language.text(option.localizationKey)).tag(option)
+                                }
+                            }
+                            .labelsHidden().pickerStyle(.menu).frame(width: 178)
+                            .accessibilityIdentifier("tray-shortcut")
+                        }
+                        if trayShortcut.registrationFailed {
+                            Text(language.text("preferences.shortcut.failed"))
+                                .foregroundStyle(.red).font(.caption)
+                        }
                         MacBarTuckPreferenceToggle(
                             title: language.text("preferences.notch"),
                             isOn: Binding(

@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var store: MenuBarItemStore
     @ObservedObject var dockVisibility: DockVisibilityController
+    @ObservedObject var trayShortcut: TrayShortcutController
     let showOnboarding: () -> Void
 
     @EnvironmentObject private var language: AppLanguageController
@@ -17,9 +18,11 @@ struct SettingsView: View {
     @State private var selectedTab: SettingsTab
 
     init(store: MenuBarItemStore, dockVisibility: DockVisibilityController,
+         trayShortcut: TrayShortcutController,
          restartApplication: @escaping () -> Void = {}, showOnboarding: @escaping () -> Void = {}) {
         self.store = store
         self.dockVisibility = dockVisibility
+        self.trayShortcut = trayShortcut
         self.permissions = store.permissions
         self.restartApplication = restartApplication
         self.showOnboarding = showOnboarding
@@ -115,6 +118,7 @@ struct SettingsView: View {
             ItemsSettingsView(store: store, openPermissions: { selectedTab = .status })
         case .preferences:
             PreferencesSettingsView(store: store, launchAtLogin: launchAtLogin, dockVisibility: dockVisibility,
+                trayShortcut: trayShortcut,
                 hoverRevealEnabled: store.isUIPreviewMode ? $previewHoverEnabled : $hoverRevealEnabled,
                 hoverRevealDelaySeconds: store.isUIPreviewMode ? $previewHoverDelaySeconds : $hoverRevealDelaySeconds,
                 showOnboarding: showOnboarding)

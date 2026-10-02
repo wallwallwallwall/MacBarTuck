@@ -17,6 +17,7 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
     // hover revealer cannot immediately reopen this panel over the menu that
     // the click just opened.
     var onItemActivation: (() -> Void)?
+    var onSettings: (() -> Void)?
 
     init(store: MenuBarItemStore, language: AppLanguageController = .shared) {
         self.store = store
@@ -48,13 +49,15 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
             self?.close()
             self?.store.retuckTemporarilyVisibleItems()
         }
+        let settingsAction: () -> Void = { [weak self] in self?.openSettings() }
         panel.contentView = NSHostingView(rootView: AppLocalizedRoot(language: language) {
             OverflowPanelView(
                 store: store,
                 presentation: presentation,
                 onActivate: activateAction,
                 onRightActivate: rightActivateAction,
-                onRetuck: retuckAction
+                onRetuck: retuckAction,
+                onSettings: settingsAction
             )
         })
         MacBarTuckTrayAppearance.apply(to: panel)
@@ -73,6 +76,11 @@ final class OverflowPanelController: NSObject, NSWindowDelegate {
 
     func toggle(relativeTo button: NSStatusBarButton) { isVisible ? close() : show(relativeTo: button) }
     var isVisible: Bool { panel.isVisible && closeWorkItem == nil }
+
+    func openSettings() {
+        close()
+        onSettings?()
+    }
 
     func updateLocalization() {
         let title = language.text("window.panel")

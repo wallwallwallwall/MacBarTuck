@@ -73,8 +73,9 @@ enum MacBarTuckTrayLayout {
     static let itemSpacing: CGFloat = 2
     static let summaryWidth: CGFloat = 104
     static let retuckButtonWidth: CGFloat = 114
+    static let settingsButtonWidth: CGFloat = 30
 
-    private static let baseChromeWidth: CGFloat = summaryWidth + 31
+    private static let baseChromeWidth: CGFloat = summaryWidth + 31 + settingsButtonWidth + 5
     private static let retuckChromeWidth: CGFloat = retuckButtonWidth + 11
     private static let emptyMessageWidth: CGFloat = 109
     private static let layoutSafetyWidth: CGFloat = 2

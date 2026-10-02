@@ -26,6 +26,7 @@ final class StatusBarController: NSObject {
     private var isTerminating = false
 
     init(store: MenuBarItemStore, language: AppLanguageController = .shared,
+         showSettings: @escaping () -> Void = {},
          menuProvider: @escaping () -> NSMenu) {
         let platformPolicy = MenuBarPlatformPolicy.current
         let defaults = UserDefaults.standard
@@ -62,6 +63,7 @@ final class StatusBarController: NSObject {
         self.menuProvider = menuProvider
         self.platformPolicy = platformPolicy
         panelController = OverflowPanelController(store: store, language: language)
+        panelController.onSettings = showSettings
         super.init()
         hiddenSectionItems.forEach(configureHiddenSectionItem)
         publishStatusItemFrameProviders()
@@ -261,6 +263,16 @@ final class StatusBarController: NSObject {
         guard !store.isInteractionBusy, let button = statusItem.button else { return }
         storeControlItemFrame(for: button)
         panelController.show(relativeTo: button)
+    }
+
+    func togglePanelFromShortcut() {
+        hoverRevealDelayController.cancel()
+        hoverRevealSuppressedUntilPointerLeaves = true
+        guard !isShowingContextMenu, !store.isInteractionBusy,
+              let button = statusItem.button else { return }
+        storeControlItemFrame(for: button)
+        // Control is part of the shortcut; do not route it through right-click handling.
+        panelController.toggle(relativeTo: button)
     }
 
     func updateLocalization() {

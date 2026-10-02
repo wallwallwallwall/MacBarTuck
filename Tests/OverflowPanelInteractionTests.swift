@@ -57,6 +57,18 @@ enum OverflowPanelInteractionTests {
         controller.close()
         try await Task.sleep(for: .milliseconds(180))
         guard !controller.isVisible else { throw failure("Closing the tray left its window visible.") }
+        var settingsRequests = 0
+        var closedBeforeSettings = false
+        controller.onSettings = {
+            settingsRequests += 1
+            closedBeforeSettings = !controller.isVisible
+        }
+        controller.show(relativeTo: anchor)
+        controller.openSettings()
+        try await Task.sleep(for: .milliseconds(180))
+        guard settingsRequests == 1, closedBeforeSettings, !panel.isVisible else {
+            throw failure("Settings must open once, after dismissing the tray.")
+        }
         print("OverflowPanelInteractionTests: held click, right click, outside dismissal, reopen and close passed")
     }
 

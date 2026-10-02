@@ -207,3 +207,8 @@
 "preview.item.focus" = "Focus Timer";
 "preview.item.clipboard" = "Clipboard";
 "preview.item.audio" = "Sound";
+"preferences.shortcut" = "Toggle tray shortcut";
+"preferences.shortcut.disabled" = "Off";
+"preferences.shortcut.controlOptionSpace" = "⌃⌥ Space";
+"preferences.shortcut.controlOptionB" = "⌃⌥ B";
+"preferences.shortcut.failed" = "Shortcut unavailable or already in use. The previous setting is unchanged; choose another shortcut.";

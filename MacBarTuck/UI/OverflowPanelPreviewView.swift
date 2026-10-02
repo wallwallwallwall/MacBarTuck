@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OverflowPanelPreviewView: View {
     @ObservedObject var store: MenuBarItemStore
+    var onSettings: () -> Void = {}
     @StateObject private var presentation = OverflowPanelPresentationState(isPresented: true)
     @EnvironmentObject private var language: AppLanguageController
 
@@ -48,7 +49,8 @@ struct OverflowPanelPreviewView: View {
                         presentation: presentation,
                         onActivate: { _ in },
                         onRightActivate: { _ in },
-                        onRetuck: {}
+                        onRetuck: {},
+                        onSettings: onSettings
                     )
                     .frame(width: panelWidth, height: OverflowPanelView.preferredHeight)
                 }
