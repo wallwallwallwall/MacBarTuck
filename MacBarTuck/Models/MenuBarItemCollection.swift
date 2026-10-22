@@ -34,14 +34,17 @@ enum MenuBarItemCollection {
         _ items: [MenuBarItem], query: String, favoriteIDs: Set<String>,
         temporaryIDs: Set<String>, language: AppLanguage
     ) -> [MenuBarItemFilter: [MenuBarItem]] {
-        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
         var groups: [MenuBarItemFilter: [MenuBarItem]] = [:]
         for item in items {
-            guard query.isEmpty ||
-                item.displayTitle(for: language).localizedCaseInsensitiveContains(query) ||
-                item.displayOwnerName(for: language).localizedCaseInsensitiveContains(query) ||
-                item.title.localizedCaseInsensitiveContains(query) ||
-                item.ownerName.localizedCaseInsensitiveContains(query) else { continue }
+            if !terms.isEmpty {
+                let searchText = [item.displayTitle(for: language), item.displayOwnerName(for: language),
+                    item.title, item.ownerName, item.bundleIdentifier ?? ""].joined(separator: "\n")
+                guard terms.allSatisfy({ term in
+                    searchText.range(of: term, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                        locale: language.locale) != nil
+                }) else { continue }
+            }
             groups[.all, default: []].append(item)
             if isFavorite(item, favoriteIDs: favoriteIDs) { groups[.favorites, default: []].append(item) }
             if temporaryIDs.contains(item.id) {

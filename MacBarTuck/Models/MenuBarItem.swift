@@ -127,10 +127,25 @@ final class MenuBarItem: Identifiable {
 
     var displayTitle: String { displayTitle(for: AppLanguageController.shared.selectedLanguage) }
 
+    // Some AX descriptions expose an image asset name instead of an item label.
+    // Keep this grammar narrow so actual module names and status text survive.
+    private static let imageAssetTitle = try? NSRegularExpression(pattern:
+        #"^(?:logo|icon|(?:status|tray|menubar|app)[ _-]?icon)(?:[ _-]+(?:[0-9]+(?:x[0-9]+)?|black|white|dark|light|template|small|large|normal|selected))*?(?:@[123]x)?(?:\.(?:png|pdf|tiff|icns))?$"#,
+        options: [.caseInsensitive])
+
+    private var usesApplicationNameForTitle: Bool {
+        guard !isProtectedSystemItem, let bundleIdentifier,
+              !bundleIdentifier.lowercased().hasPrefix("com.apple."),
+              !ownerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        let value = (resolvedTitle ?? title).trimmingCharacters(in: .whitespacesAndNewlines)
+        return Self.imageAssetTitle?.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil
+    }
+
     private var notificationCount: String? {
         guard !isProtectedSystemItem,
               let bundle = bundleIdentifier?.lowercased(),
-              bundle.hasSuffix("com.dingtalk.mac") || bundle == "com.tencent.xinwechat" else { return nil }
+              bundle.hasSuffix("com.dingtalk.mac") ||
+                ["com.tencent.xinwechat", "com.tencent.qq"].contains(bundle) else { return nil }
         let value = (resolvedTitle ?? title).trimmingCharacters(in: .whitespacesAndNewlines)
         let digits = value.hasSuffix("+") ? value.dropLast() : value[...]
         guard !digits.isEmpty, digits.count <= 3,
@@ -145,6 +160,7 @@ final class MenuBarItem: Identifiable {
         if let count = notificationCount {
             return "\(displayOwnerName(for: language)) \(count)"
         }
+        if usesApplicationNameForTitle { return displayOwnerName(for: language) }
         let normalized = value.lowercased()
         if normalized.hasPrefix("unidentified item "),
            let index = Int(normalized.dropFirst("unidentified item ".count)) {
@@ -185,7 +201,10 @@ final class MenuBarItem: Identifiable {
         let title = displayTitle(for: language)
         if showsNotificationCountInTitle { return title }
         let owner = displayOwnerName(for: language)
-        return title.isEmpty ? owner : "\(owner) · \(title)"
+        if title.isEmpty { return owner }
+        if owner.isEmpty || title.localizedCaseInsensitiveCompare(owner) == .orderedSame ||
+            title.lowercased().hasPrefix(owner.lowercased() + " ") { return title }
+        return "\(owner) · \(title)"
     }
     /// The overflow tray favors an application's full-color icon when one can
     /// be resolved. Protected system controls keep their item-specific glyph.

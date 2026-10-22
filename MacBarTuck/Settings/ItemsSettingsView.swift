@@ -31,7 +31,7 @@ struct ItemsSettingsView: View {
                             if query.isEmpty { searchIsFocused = false } else { query = "" }
                         }
                         .accessibilityLabel(language.text("items.search"))
-                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    Button { query = ""; searchIsFocused = true } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
                         .opacity(query.isEmpty ? 0 : 1).disabled(query.isEmpty)
                         .help(language.text("items.search.clear")).accessibilityLabel(language.text("items.search.clear"))
@@ -87,7 +87,11 @@ struct ItemsSettingsView: View {
             } else if filteredItems.isEmpty {
                 emptyState(hasFilters ? language.text("items.no_matches") : language.text("items.empty"), symbol: "menubar.rectangle") {
                     if hasFilters {
-                        Button(language.text("items.filter.reset")) { query = ""; filter = .all }
+                        Button(language.text("items.filter.reset")) {
+                            query = ""
+                            filter = .all
+                            searchIsFocused = true
+                        }
                     }
                 }
             } else {
