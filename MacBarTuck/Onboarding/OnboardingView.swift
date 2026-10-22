@@ -50,7 +50,7 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("MacBarTuck").font(.system(size: 14, weight: .semibold))
+                Text("MacOSBarTucK").font(.system(size: 14, weight: .semibold))
                 Text(step.title(language)).foregroundStyle(MacBarTuckTheme.secondaryText)
                 Spacer()
                 Picker(language.text("preferences.language.label"), selection: Binding(
@@ -118,7 +118,7 @@ struct OnboardingView: View {
         case .welcome:
             VStack(spacing: 20) {
                 Image(nsImage: NSApp.applicationIconImage).resizable().scaledToFit().frame(width: 148, height: 148)
-                Text("MacBarTuck").font(.system(size: 26, weight: .semibold))
+                Text("MacOSBarTucK").font(.system(size: 26, weight: .semibold))
             }
         case .permissions:
             VStack(alignment: .leading, spacing: 24) {

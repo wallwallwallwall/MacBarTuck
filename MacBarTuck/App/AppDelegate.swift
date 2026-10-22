@@ -95,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = store.isUIPreviewMode ? language.text("window.settings.preview") : "MacBarTuck"
+            window.title = store.isUIPreviewMode ? language.text("window.settings.preview") : "MacOSBarTucK"
             window.titlebarAppearsTransparent = false
             window.titleVisibility = .visible
             window.isMovableByWindowBackground = true
@@ -141,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Wait for normal termination (including layout restoration). Pass
         // the bundle path as an argument, never as shell source text.
         helper.arguments = ["-c", "for attempt in 1 2 3 4 5 6 7 8 9 10; do if ! /bin/kill -0 \"$2\" 2>/dev/null; then exec /usr/bin/open -n \"$1\" --args --show-settings; fi; /bin/sleep 1; done; exit 1",
-                            "MacBarTuck-restart", Bundle.main.bundleURL.path, String(getpid())]
+                            "MacOSBarTucK-restart", Bundle.main.bundleURL.path, String(getpid())]
         do {
             try helper.run()
             restartScheduled = true
@@ -243,7 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateLocalizedChrome() {
         settingsWindowController?.window?.title = store.isUIPreviewMode
             ? language.text("window.settings.preview")
-            : "MacBarTuck"
+            : "MacOSBarTucK"
         onboardingWindowController?.window?.title = store.isUIPreviewMode
             ? language.text("window.onboarding.preview")
             : language.text("window.onboarding")

@@ -3,11 +3,11 @@
 "common.reset" = "Reset";
 "common.quit" = "Quit";
 
-"window.settings.preview" = "MacBarTuck · UI Preview";
-"window.onboarding" = "Set Up MacBarTuck";
-"window.onboarding.preview" = "Set Up MacBarTuck · UI Preview";
-"window.panel.preview" = "MacBarTuck Tray Preview";
-"window.panel" = "MacBarTuck Tray";
+"window.settings.preview" = "MacOSBarTucK · UI Preview";
+"window.onboarding" = "Set Up MacOSBarTucK";
+"window.onboarding.preview" = "Set Up MacOSBarTucK · UI Preview";
+"window.panel.preview" = "MacOSBarTucK Tray Preview";
+"window.panel" = "MacOSBarTucK Tray";
 
 "settings.page" = "Page";
 "settings.tab.items" = "Menu Items";
@@ -25,8 +25,8 @@
 "preferences.hover.delay.value" = "%.1f sec";
 "preferences.hover.delay.help" = "The tray opens only after the pointer stays for this long; passing over the menu bar will not trigger it.";
 "preferences.application.section" = "Application";
-"preferences.dock" = "Show MacBarTuck in the Dock";
-"preferences.login" = "Open MacBarTuck at Login";
+"preferences.dock" = "Show MacOSBarTucK in the Dock";
+"preferences.login" = "Open MacOSBarTucK at Login";
 "preferences.language.section" = "Language";
 "preferences.language.label" = "Interface Language";
 "preferences.language.help" = "Updates every window and menu immediately";
@@ -40,7 +40,7 @@
 "preferences.reset_settings" = "Reset Menu Bar Settings…";
 "preferences.reset.title" = "Reset Menu Bar Settings?";
 "preferences.reset.message" = "All menu items will be shown and existing rules will be cleared. Login, interface language, and system permissions will not change.";
-"preferences.about" = "About MacBarTuck";
+"preferences.about" = "About MacOSBarTucK";
 "preferences.export.failed" = "Export failed: %@";
 
 "permissions.section" = "System Permissions";
@@ -50,10 +50,10 @@
 "permissions.checked_at" = "Checked at %@";
 "permissions.not_effective.section" = "Enabled, but Not Yet Effective";
 "permissions.restart.screen" = "macOS accepted the screen recording request, but this process does not have access yet. Restart the app.";
-"permissions.restart.general" = "Restart MacBarTuck first, then confirm that both permissions show “Effective.”";
-"permissions.restart.button" = "Restart MacBarTuck";
+"permissions.restart.general" = "Restart MacOSBarTucK first, then confirm that both permissions show “Effective.”";
+"permissions.restart.button" = "Restart MacOSBarTucK";
 "permissions.locate_app" = "Show Current App";
-"permissions.adhoc_note" = "This build uses an ad-hoc signature. After an update, macOS may keep permission entries for an older build. If restarting does not help, remove the old BarTuck or MacBarTuck entry in System Settings, add this app, and allow access.";
+"permissions.adhoc_note" = "This build uses an ad-hoc signature. After an update, macOS may keep permission entries for an older build. If restarting does not help, remove the old entry (possibly named BarTuck, MacBarTuck, or MacOSBarTucK) in System Settings, add this app, and allow access.";
 "permissions.accessibility.settings" = "Accessibility Settings";
 "permissions.screen_recording.settings" = "Screen Recording Settings";
 "permissions.displays.section" = "Displays";
@@ -123,7 +123,7 @@
 "onboarding.previous" = "Back";
 "onboarding.continue" = "Continue";
 "onboarding.finish" = "Finish";
-"onboarding.welcome.title" = "Welcome to MacBarTuck";
+"onboarding.welcome.title" = "Welcome to MacOSBarTucK";
 "onboarding.enable_collection" = "Enable Menu Item Tucking";
 "onboarding.setup_complete" = "Setup Complete";
 "onboarding.setup_saved" = "Settings Saved";
@@ -132,7 +132,7 @@
 "onboarding.open_settings" = "Open Settings";
 "onboarding.open_settings.label" = "%@ Settings";
 
-"panel.help" = "MacBarTuck Tray";
+"panel.help" = "MacOSBarTucK Tray";
 "panel.empty" = "No Tucked Items";
 "panel.not_hidden" = "Items Have Not Been Tucked Yet";
 "panel.tucked.count" = "%d Tucked";
@@ -147,16 +147,16 @@
 "menu.settings" = "Settings…";
 "menu.show_dock" = "Show in Dock";
 "menu.hide_windows" = "Hide Windows";
-"menu.quit" = "Quit MacBarTuck";
+"menu.quit" = "Quit MacOSBarTucK";
 "menu.hide_dock" = "Hide Dock Icon";
-"status.tooltip" = "Open the MacBarTuck tray; right-click for the menu";
-"status.accessibility" = "MacBarTuck Menu Bar Tray";
-"status.collapse" = "Collapse MacBarTuck";
-"status.expand" = "Expand MacBarTuck";
+"status.tooltip" = "Open the MacOSBarTucK tray; right-click for the menu";
+"status.accessibility" = "MacOSBarTucK Menu Bar Tray";
+"status.collapse" = "Collapse MacOSBarTucK";
+"status.expand" = "Expand MacOSBarTucK";
 
 "error.dock" = "Unable to update Dock visibility. Try again.";
 "error.login" = "Unable to update login settings: %@";
-"error.restart" = "Unable to restart MacBarTuck: %@";
+"error.restart" = "Unable to restart MacOSBarTucK: %@";
 
 "store.capture.permission" = "Menu bar capture permission is not ready";
 "store.restore.progress" = "Restoring menu bar items…";

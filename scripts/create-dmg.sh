@@ -9,12 +9,12 @@ SWIFT="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
 SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/MacBarTuck/Resources/Info.plist")"
 DERIVED_DATA="$ROOT/work/DerivedData-Release"
-TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/MacBarTuck-dmg.XXXXXX")"
+TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/MacOSBarTucK-dmg.XXXXXX")"
 STAGING="$TEMP_ROOT/dmg-root"
 DIST="$ROOT/dist"
-APP_SOURCE="$DERIVED_DATA/Build/Products/Release/MacBarTuck.app"
-APP_STAGED="$STAGING/MacBarTuck.app"
-DMG_NAME="MacBarTuck-$VERSION.dmg"
+APP_SOURCE="$DERIVED_DATA/Build/Products/Release/MacOSBarTucK.app"
+APP_STAGED="$STAGING/MacOSBarTucK.app"
+DMG_NAME="MacOSBarTucK-$VERSION.dmg"
 DMG_PATH="$DIST/$DMG_NAME"
 SIGNING_IDENTITY="${MACBARTUCK_SIGNING_IDENTITY:-${BARTUCK_SIGNING_IDENTITY:--}}"
 
@@ -29,8 +29,8 @@ mkdir -p "$STAGING/.background" "$STAGING/docs" "$DIST"
 rm -f "$DMG_PATH" "$DMG_PATH.sha256"
 
 DEVELOPER_DIR="$DEVELOPER_DIR" "$XCODEBUILD" \
-  -project "$ROOT/MacBarTuck.xcodeproj" \
-  -scheme MacBarTuck \
+  -project "$ROOT/MacOSBarTucK.xcodeproj" \
+  -scheme MacOSBarTucK \
   -configuration Release \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath "$DERIVED_DATA" \
@@ -46,7 +46,7 @@ ditto --norsrc "$APP_SOURCE" "$APP_STAGED"
 # staging copy; the source tree and build product remain untouched.
 xattr -cr "$APP_STAGED"
 
-ARCHS_FOUND="$(lipo -archs "$APP_STAGED/Contents/MacOS/MacBarTuck")"
+ARCHS_FOUND="$(lipo -archs "$APP_STAGED/Contents/MacOS/MacOSBarTucK")"
 if [[ "$ARCHS_FOUND" != "arm64" ]]; then
   printf 'Unexpected executable architectures: %s\n' "$ARCHS_FOUND" >&2
   exit 1
@@ -85,7 +85,7 @@ xattr -cr "$STAGING"
 codesign --verify --deep --strict --verbose=2 "$APP_STAGED"
 
 hdiutil create \
-  -volname "MacBarTuck $VERSION" \
+  -volname "MacOSBarTucK $VERSION" \
   -srcfolder "$STAGING" \
   -format UDZO \
   -imagekey zlib-level=9 \

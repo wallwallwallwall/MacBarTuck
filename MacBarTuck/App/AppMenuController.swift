@@ -24,7 +24,7 @@ final class AppMenuController: NSObject {
     }
 
     func makeStatusMenu() -> NSMenu {
-        let menu = NSMenu(title: "MacBarTuck")
+        let menu = NSMenu(title: "MacOSBarTucK")
         menu.autoenablesItems = false
         let summary = permissionSummary()
         if !summary.isEmpty {
@@ -46,7 +46,7 @@ final class AppMenuController: NSObject {
     }
 
     func makeDockMenu() -> NSMenu {
-        let menu = NSMenu(title: "MacBarTuck")
+        let menu = NSMenu(title: "MacOSBarTucK")
         menu.autoenablesItems = false
         menu.addItem(item(language.text("menu.settings"), action: #selector(openSettings), symbol: "gearshape"))
         menu.addItem(item(language.text("menu.hide_dock"), action: #selector(hideDock)))

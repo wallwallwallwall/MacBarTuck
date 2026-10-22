@@ -35,7 +35,7 @@ struct SettingsView: View {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable().scaledToFit().frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("MacBarTuck").font(.system(size: 18, weight: .semibold))
+                    Text("MacOSBarTucK").font(.system(size: 18, weight: .semibold))
                     Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
                         .font(.system(size: 11)).foregroundStyle(MacBarTuckTheme.secondaryText)
                 }
@@ -94,7 +94,7 @@ struct SettingsView: View {
             if tab == .status { permissions.refresh() }
         }
         .onChange(of: permissions.effectiveAccessKey) { _, _ in store.refresh() }
-        .alert("MacBarTuck", isPresented: Binding(
+        .alert("MacOSBarTucK", isPresented: Binding(
             get: { store.lastActivationError != nil },
             set: { if !$0 { store.lastActivationError = nil } }
         )) {

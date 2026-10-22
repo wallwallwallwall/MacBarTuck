@@ -197,7 +197,7 @@ struct PreferencesSettingsView: View {
 
     private func exportDiagnostics() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "MacBarTuck-diagnostics.jsonl"
+        panel.nameFieldStringValue = "MacOSBarTucK-diagnostics.jsonl"
         panel.allowedContentTypes = [UTType(filenameExtension: "jsonl") ?? .plainText]
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }

@@ -6,27 +6,27 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		A00000000000000000000001 /* MacBarTuck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacBarTuck.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000001 /* MacOSBarTucK.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacOSBarTucK.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		A00000000000000000000016 /* Exceptions for "MacBarTuck" folder in "MacBarTuck" target */ = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Resources/Info.plist,); target = A00000000000000000000003 /* MacBarTuck */; };
+		A00000000000000000000016 /* Exceptions for "MacOSBarTucK" folder in "MacOSBarTucK" target */ = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Resources/Info.plist,); target = A00000000000000000000003 /* MacOSBarTucK */; };
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A00000000000000000000012 /* MacBarTuck */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (A00000000000000000000016 /* Exceptions for "MacBarTuck" folder in "MacBarTuck" target */,); explicitFileTypes = {}; explicitFolders = (); path = MacBarTuck; sourceTree = "<group>"; };
+		A00000000000000000000012 /* MacOSBarTucK */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (A00000000000000000000016 /* Exceptions for "MacOSBarTucK" folder in "MacOSBarTucK" target */,); explicitFileTypes = {}; explicitFolders = (); path = MacBarTuck; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXGroup section */
-		A00000000000000000000002 = {isa = PBXGroup; children = (A00000000000000000000012 /* MacBarTuck */, A00000000000000000000001 /* MacBarTuck.app */); sourceTree = "<group>"; };
+		A00000000000000000000002 = {isa = PBXGroup; children = (A00000000000000000000012 /* MacOSBarTucK */, A00000000000000000000001 /* MacOSBarTucK.app */); sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A00000000000000000000003 /* MacBarTuck */ = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000004; buildPhases = (A00000000000000000000005 /* Sources */, A00000000000000000000015 /* Resources */,); buildRules = (); dependencies = (); fileSystemSynchronizedGroups = (A00000000000000000000012 /* MacBarTuck */,); name = MacBarTuck; packageProductDependencies = (); productName = MacBarTuck; productReference = A00000000000000000000001 /* MacBarTuck.app */; productType = "com.apple.product-type.application"; };
+		A00000000000000000000003 /* MacOSBarTucK */ = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000004; buildPhases = (A00000000000000000000005 /* Sources */, A00000000000000000000015 /* Resources */,); buildRules = (); dependencies = (); fileSystemSynchronizedGroups = (A00000000000000000000012 /* MacOSBarTucK */,); name = MacOSBarTucK; packageProductDependencies = (); productName = MacOSBarTucK; productReference = A00000000000000000000001 /* MacOSBarTucK.app */; productType = "com.apple.product-type.application"; };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		A00000000000000000000006 /* Project object */ = {isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1600; LastUpgradeCheck = 1600; TargetAttributes = { A00000000000000000000003 = { CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = A00000000000000000000007; compatibilityVersion = "Xcode 16.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = A00000000000000000000002; minimizedProjectReferenceProxies = 1; preferredProjectObjectVersion = 77; productRefGroup = A00000000000000000000002; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000003 /* MacBarTuck */,); };
+		A00000000000000000000006 /* Project object */ = {isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1600; LastUpgradeCheck = 1600; TargetAttributes = { A00000000000000000000003 = { CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = A00000000000000000000007; compatibilityVersion = "Xcode 16.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = A00000000000000000000002; minimizedProjectReferenceProxies = 1; preferredProjectObjectVersion = 77; productRefGroup = A00000000000000000000002; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000003 /* MacOSBarTucK */,); };
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */

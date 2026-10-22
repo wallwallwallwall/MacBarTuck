@@ -286,7 +286,7 @@ final class MenuBarMaskPanel: NSPanel, MenuBarMaskWindow {
             defer: false
         )
         level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
-        title = "MacBarTuck Mask"
+        title = "MacOSBarTucK Mask"
         backgroundColor = .clear
         isOpaque = false
         hasShadow = false

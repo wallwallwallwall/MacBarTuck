@@ -3,11 +3,11 @@
 "common.reset" = "重置";
 "common.quit" = "退出";
 
-"window.settings.preview" = "MacBarTuck · 界面预览";
-"window.onboarding" = "设置 MacBarTuck";
-"window.onboarding.preview" = "设置 MacBarTuck · 界面预览";
-"window.panel.preview" = "MacBarTuck 托盘预览";
-"window.panel" = "MacBarTuck 托盘";
+"window.settings.preview" = "MacOSBarTucK · 界面预览";
+"window.onboarding" = "设置 MacOSBarTucK";
+"window.onboarding.preview" = "设置 MacOSBarTucK · 界面预览";
+"window.panel.preview" = "MacOSBarTucK 托盘预览";
+"window.panel" = "MacOSBarTucK 托盘";
 
 "settings.page" = "页面";
 "settings.tab.items" = "菜单项";
@@ -25,8 +25,8 @@
 "preferences.hover.delay.value" = "%.1f 秒";
 "preferences.hover.delay.help" = "鼠标持续停留达到此时间后才展开，短暂经过不会触发。";
 "preferences.application.section" = "应用";
-"preferences.dock" = "在程序坞中显示 MacBarTuck";
-"preferences.login" = "登录时打开 MacBarTuck";
+"preferences.dock" = "在程序坞中显示 MacOSBarTucK";
+"preferences.login" = "登录时打开 MacOSBarTucK";
 "preferences.language.section" = "语言";
 "preferences.language.label" = "界面语言";
 "preferences.language.help" = "切换后立即更新所有窗口和菜单";
@@ -40,7 +40,7 @@
 "preferences.reset_settings" = "重置菜单栏设置…";
 "preferences.reset.title" = "重置菜单栏设置？";
 "preferences.reset.message" = "所有菜单项将恢复显示，已有规则会被清除。登录启动、界面语言和系统权限不变。";
-"preferences.about" = "关于 MacBarTuck";
+"preferences.about" = "关于 MacOSBarTucK";
 "preferences.export.failed" = "导出失败：%@";
 
 "permissions.section" = "系统权限";
@@ -50,10 +50,10 @@
 "permissions.checked_at" = "检查于 %@";
 "permissions.not_effective.section" = "开关已打开，但仍未生效";
 "permissions.restart.screen" = "系统已接受录屏请求，当前进程尚未生效，请重新启动。";
-"permissions.restart.general" = "先重新启动 MacBarTuck，再检查两项状态是否变为“已生效”。";
-"permissions.restart.button" = "重新启动 MacBarTuck";
+"permissions.restart.general" = "先重新启动 MacOSBarTucK，再检查两项状态是否变为“已生效”。";
+"permissions.restart.button" = "重新启动 MacOSBarTucK";
 "permissions.locate_app" = "定位当前应用";
-"permissions.adhoc_note" = "此版本使用临时签名。更新后，系统可能仍保留旧版本的授权开关。若重启后仍未生效，请在系统设置中移除旧的 BarTuck 或 MacBarTuck 条目，再添加当前应用并允许访问。";
+"permissions.adhoc_note" = "此版本使用临时签名。更新后，系统可能仍保留旧版本的授权开关。若重启后仍未生效，请在系统设置中移除旧版本条目（可能名为 BarTuck、MacBarTuck 或 MacOSBarTucK），再添加当前应用并允许访问。";
 "permissions.accessibility.settings" = "辅助功能设置";
 "permissions.screen_recording.settings" = "屏幕录制设置";
 "permissions.displays.section" = "显示器";
@@ -123,7 +123,7 @@
 "onboarding.previous" = "上一步";
 "onboarding.continue" = "继续";
 "onboarding.finish" = "完成";
-"onboarding.welcome.title" = "欢迎使用 MacBarTuck";
+"onboarding.welcome.title" = "欢迎使用 MacOSBarTucK";
 "onboarding.enable_collection" = "启用菜单项收纳";
 "onboarding.setup_complete" = "设置完成";
 "onboarding.setup_saved" = "设置已保存";
@@ -132,7 +132,7 @@
 "onboarding.open_settings" = "打开设置";
 "onboarding.open_settings.label" = "%@设置";
 
-"panel.help" = "MacBarTuck 托盘";
+"panel.help" = "MacOSBarTucK 托盘";
 "panel.empty" = "没有已收起的项目";
 "panel.not_hidden" = "尚未成功收起";
 "panel.tucked.count" = "已收纳 %d 项";
@@ -147,16 +147,16 @@
 "menu.settings" = "设置…";
 "menu.show_dock" = "在程序坞中显示";
 "menu.hide_windows" = "隐藏窗口";
-"menu.quit" = "退出 MacBarTuck";
+"menu.quit" = "退出 MacOSBarTucK";
 "menu.hide_dock" = "隐藏程序坞图标";
-"status.tooltip" = "打开 MacBarTuck 托盘；右键显示菜单";
-"status.accessibility" = "MacBarTuck 菜单栏托盘";
-"status.collapse" = "收起 MacBarTuck";
-"status.expand" = "展开 MacBarTuck";
+"status.tooltip" = "打开 MacOSBarTucK 托盘；右键显示菜单";
+"status.accessibility" = "MacOSBarTucK 菜单栏托盘";
+"status.collapse" = "收起 MacOSBarTucK";
+"status.expand" = "展开 MacOSBarTucK";
 
 "error.dock" = "无法更新程序坞显示，请重试。";
 "error.login" = "无法更新登录启动设置：%@";
-"error.restart" = "无法重新启动 MacBarTuck：%@";
+"error.restart" = "无法重新启动 MacOSBarTucK：%@";
 
 "store.capture.permission" = "菜单栏读取权限未就绪";
 "store.restore.progress" = "正在恢复菜单栏项目…";
